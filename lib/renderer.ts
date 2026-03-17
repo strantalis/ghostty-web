@@ -586,6 +586,167 @@ export class CanvasRenderer {
   }
 
   /**
+   * Try to render a Unicode block element (U+2580–U+259F) as a precise fillRect
+   * instead of relying on font glyphs which may not perfectly fill the cell.
+   * Returns true if the codepoint was handled, false otherwise.
+   */
+  private renderBlockElement(
+    codepoint: number,
+    cellX: number,
+    cellY: number,
+    cellWidth: number,
+    cellHeight: number
+  ): boolean {
+    const cp = codepoint;
+    // Block Elements range: U+2580 – U+259F
+    if (cp < 0x2580 || cp > 0x259f) return false;
+
+    const ctx = this.ctx;
+    const w = cellWidth;
+    const h = cellHeight;
+
+    switch (cp) {
+      // ▀ UPPER HALF BLOCK
+      case 0x2580:
+        ctx.fillRect(cellX, cellY, w, h / 2);
+        return true;
+
+      // ▁–▇ LOWER 1/8 .. LOWER 7/8 BLOCK
+      case 0x2581:
+      case 0x2582:
+      case 0x2583:
+      case 0x2584:
+      case 0x2585:
+      case 0x2586:
+      case 0x2587: {
+        const frac = (cp - 0x2580) / 8;
+        const blockH = h * frac;
+        ctx.fillRect(cellX, cellY + h - blockH, w, blockH);
+        return true;
+      }
+
+      // █ FULL BLOCK
+      case 0x2588:
+        ctx.fillRect(cellX, cellY, w, h);
+        return true;
+
+      // ▉–▏ LEFT 7/8 .. LEFT 1/8 BLOCK
+      case 0x2589:
+      case 0x258a:
+      case 0x258b:
+      case 0x258c:
+      case 0x258d:
+      case 0x258e:
+      case 0x258f: {
+        const frac = (0x2590 - cp) / 8;
+        ctx.fillRect(cellX, cellY, w * frac, h);
+        return true;
+      }
+
+      // ▐ RIGHT HALF BLOCK
+      case 0x2590:
+        ctx.fillRect(cellX + w / 2, cellY, w / 2, h);
+        return true;
+
+      // ░ LIGHT SHADE
+      case 0x2591: {
+        const prev = ctx.globalAlpha;
+        ctx.globalAlpha = prev * 0.25;
+        ctx.fillRect(cellX, cellY, w, h);
+        ctx.globalAlpha = prev;
+        return true;
+      }
+
+      // ▒ MEDIUM SHADE
+      case 0x2592: {
+        const prev = ctx.globalAlpha;
+        ctx.globalAlpha = prev * 0.5;
+        ctx.fillRect(cellX, cellY, w, h);
+        ctx.globalAlpha = prev;
+        return true;
+      }
+
+      // ▓ DARK SHADE
+      case 0x2593: {
+        const prev = ctx.globalAlpha;
+        ctx.globalAlpha = prev * 0.75;
+        ctx.fillRect(cellX, cellY, w, h);
+        ctx.globalAlpha = prev;
+        return true;
+      }
+
+      // ▔ UPPER 1/8 BLOCK
+      case 0x2594:
+        ctx.fillRect(cellX, cellY, w, h / 8);
+        return true;
+
+      // ▕ RIGHT 1/8 BLOCK
+      case 0x2595:
+        ctx.fillRect(cellX + w * 7 / 8, cellY, w / 8, h);
+        return true;
+
+      // ▖ QUADRANT LOWER LEFT
+      case 0x2596:
+        ctx.fillRect(cellX, cellY + h / 2, w / 2, h / 2);
+        return true;
+
+      // ▗ QUADRANT LOWER RIGHT
+      case 0x2597:
+        ctx.fillRect(cellX + w / 2, cellY + h / 2, w / 2, h / 2);
+        return true;
+
+      // ▘ QUADRANT UPPER LEFT
+      case 0x2598:
+        ctx.fillRect(cellX, cellY, w / 2, h / 2);
+        return true;
+
+      // ▙ QUADRANT UPPER LEFT AND LOWER LEFT AND LOWER RIGHT
+      case 0x2599:
+        ctx.fillRect(cellX, cellY, w / 2, h);
+        ctx.fillRect(cellX + w / 2, cellY + h / 2, w / 2, h / 2);
+        return true;
+
+      // ▚ QUADRANT UPPER LEFT AND LOWER RIGHT
+      case 0x259a:
+        ctx.fillRect(cellX, cellY, w / 2, h / 2);
+        ctx.fillRect(cellX + w / 2, cellY + h / 2, w / 2, h / 2);
+        return true;
+
+      // ▛ QUADRANT UPPER LEFT AND UPPER RIGHT AND LOWER LEFT
+      case 0x259b:
+        ctx.fillRect(cellX, cellY, w, h / 2);
+        ctx.fillRect(cellX, cellY + h / 2, w / 2, h / 2);
+        return true;
+
+      // ▜ QUADRANT UPPER LEFT AND UPPER RIGHT AND LOWER RIGHT
+      case 0x259c:
+        ctx.fillRect(cellX, cellY, w, h / 2);
+        ctx.fillRect(cellX + w / 2, cellY + h / 2, w / 2, h / 2);
+        return true;
+
+      // ▝ QUADRANT UPPER RIGHT
+      case 0x259d:
+        ctx.fillRect(cellX + w / 2, cellY, w / 2, h / 2);
+        return true;
+
+      // ▞ QUADRANT UPPER RIGHT AND LOWER LEFT
+      case 0x259e:
+        ctx.fillRect(cellX + w / 2, cellY, w / 2, h / 2);
+        ctx.fillRect(cellX, cellY + h / 2, w / 2, h / 2);
+        return true;
+
+      // ▟ QUADRANT UPPER RIGHT AND LOWER LEFT AND LOWER RIGHT
+      case 0x259f:
+        ctx.fillRect(cellX + w / 2, cellY, w / 2, h / 2);
+        ctx.fillRect(cellX, cellY + h / 2, w, h / 2);
+        return true;
+
+      default:
+        return false;
+    }
+  }
+
+  /**
    * Render a cell's text and decorations (Pass 2 of two-pass rendering)
    * Selection foreground color is applied here to match the selection background.
    */
@@ -601,12 +762,6 @@ export class CanvasRenderer {
 
     // Check if this cell is selected
     const isSelected = this.isInSelection(x, y);
-
-    // Set text style
-    let fontStyle = '';
-    if (cell.flags & CellFlags.ITALIC) fontStyle += 'italic ';
-    if (cell.flags & CellFlags.BOLD) fontStyle += 'bold ';
-    this.ctx.font = `${fontStyle}${this.fontSize}px ${this.fontFamily}`;
 
     // Set text color - use override, selection foreground, or normal color
     if (colorOverride) {
@@ -634,6 +789,23 @@ export class CanvasRenderer {
       this.ctx.globalAlpha = 0.5;
     }
 
+    // Try pixel-perfect block element rendering before falling back to font glyphs.
+    // Block elements (U+2580–U+259F) are drawn as fillRect to avoid sub-pixel gaps
+    // caused by Math.ceil() rounding in font metrics measurement.
+    const cp = cell.codepoint || 32;
+    if (this.renderBlockElement(cp, cellX, cellY, cellWidth, this.metrics.height)) {
+      if (cell.flags & CellFlags.FAINT) {
+        this.ctx.globalAlpha = 1.0;
+      }
+      return;
+    }
+
+    // Set text style (skip for block elements above since they don't use font)
+    let fontStyle = '';
+    if (cell.flags & CellFlags.ITALIC) fontStyle += 'italic ';
+    if (cell.flags & CellFlags.BOLD) fontStyle += 'bold ';
+    this.ctx.font = `${fontStyle}${this.fontSize}px ${this.fontFamily}`;
+
     // Draw text
     const textX = cellX;
     const textY = cellY + this.metrics.baseline;
@@ -645,7 +817,7 @@ export class CanvasRenderer {
       char = this.currentBuffer.getGraphemeString(y, x);
     } else {
       // Simple cell - single codepoint
-      char = String.fromCodePoint(cell.codepoint || 32); // Default to space if null
+      char = String.fromCodePoint(cp);
     }
     this.ctx.fillText(char, textX, textY);
 
