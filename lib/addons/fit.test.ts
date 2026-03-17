@@ -233,4 +233,50 @@ describe('Dimension Calculation', () => {
     // Expected: (720 - 15 scrollbar) / 8 = 88 cols, 384 / 16 = 24 rows
     expect(dims).toEqual({ cols: 88, rows: 24 });
   });
+
+  test('proposeDimensions uses custom scrollbar width override', () => {
+    const customAddon = new FitAddon({ scrollbarWidth: 0 });
+    const mockElement = document.createElement('div');
+    Object.defineProperty(mockElement, 'clientWidth', { value: 720, configurable: true });
+    Object.defineProperty(mockElement, 'clientHeight', { value: 384, configurable: true });
+
+    const mockTerminal = {
+      cols: 80,
+      rows: 24,
+      element: mockElement,
+      renderer: {
+        getMetrics: () => ({ width: 8, height: 16, baseline: 12 }),
+      },
+      resize: () => {},
+    };
+
+    customAddon.activate(mockTerminal as any);
+    const dims = customAddon.proposeDimensions();
+
+    expect(dims).toEqual({ cols: 90, rows: 24 });
+    customAddon.dispose();
+  });
+
+  test('constructor normalizes invalid scrollbar width input safely', () => {
+    const customAddon = new FitAddon({ scrollbarWidth: -2.4 });
+    const mockElement = document.createElement('div');
+    Object.defineProperty(mockElement, 'clientWidth', { value: 720, configurable: true });
+    Object.defineProperty(mockElement, 'clientHeight', { value: 384, configurable: true });
+
+    const mockTerminal = {
+      cols: 80,
+      rows: 24,
+      element: mockElement,
+      renderer: {
+        getMetrics: () => ({ width: 8, height: 16, baseline: 12 }),
+      },
+      resize: () => {},
+    };
+
+    customAddon.activate(mockTerminal as any);
+    const dims = customAddon.proposeDimensions();
+
+    expect(dims).toEqual({ cols: 90, rows: 24 });
+    customAddon.dispose();
+  });
 });

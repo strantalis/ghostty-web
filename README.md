@@ -1,10 +1,13 @@
-# ghostty-web
+# @strantalis/workset-ghostty-web
 
-[![NPM Version](https://img.shields.io/npm/v/ghostty-web)](https://npmjs.com/package/ghostty-web) [![NPM Downloads](https://img.shields.io/npm/dw/ghostty-web)](https://npmjs.com/package/ghostty-web) [![npm bundle size](https://img.shields.io/bundlephobia/minzip/ghostty-web)](https://npmjs.com/package/ghostty-web) [![license](https://img.shields.io/github/license/coder/ghostty-web)](./LICENSE)
+[![NPM Version](https://img.shields.io/npm/v/%40strantalis%2Fworkset-ghostty-web)](https://www.npmjs.com/package/@strantalis/workset-ghostty-web) [![NPM Downloads](https://img.shields.io/npm/dw/%40strantalis%2Fworkset-ghostty-web)](https://www.npmjs.com/package/@strantalis/workset-ghostty-web) [![npm bundle size](https://img.shields.io/bundlephobia/minzip/%40strantalis%2Fworkset-ghostty-web)](https://www.npmjs.com/package/@strantalis/workset-ghostty-web) [![license](https://img.shields.io/github/license/strantalis/ghostty-web)](./LICENSE)
+
+> Warning
+> This is Sean Strantalis's scoped fork of `ghostty-web`, intended for Workset integration and local alpha publishing. Upstream docs and issues still live with the original project lineage.
 
 [Ghostty](https://github.com/ghostty-org/ghostty) for the web with [xterm.js](https://github.com/xtermjs/xterm.js) API compatibility — giving you a proper VT100 implementation in the browser.
 
-- Migrate from xterm by changing your import: `@xterm/xterm` → `ghostty-web`
+- Migrate from xterm by changing your import: `@xterm/xterm` → `@strantalis/workset-ghostty-web`
 - WASM-compiled parser from Ghostty—the same code that runs the native app
 - Zero runtime dependencies, ~400KB WASM bundle
 
@@ -17,7 +20,7 @@ Originally created for [Mux](https://github.com/coder/mux) (a desktop app for is
 - On your computer:
 
   ```bash
-  npx @ghostty-web/demo@next
+  bun run demo
   ```
 
   This starts a local HTTP server with a real shell on `http://localhost:8080`. Works best on Linux and macOS.
@@ -28,7 +31,7 @@ Originally created for [Mux](https://github.com/coder/mux) (a desktop app for is
 
 xterm.js is everywhere—VS Code, Hyper, countless web terminals. But it has fundamental issues:
 
-| Issue                                    | xterm.js                                                         | ghostty-web                |
+| Issue                                    | xterm.js                                                         | workset-ghostty-web        |
 | ---------------------------------------- | ---------------------------------------------------------------- | -------------------------- |
 | **Complex scripts** (Devanagari, Arabic) | Rendering issues                                                 | ✓ Proper grapheme handling |
 | **XTPUSHSGR/XTPOPSGR**                   | [Not supported](https://github.com/xtermjs/xterm.js/issues/2570) | ✓ Full support             |
@@ -38,15 +41,15 @@ xterm.js reimplements terminal emulation in JavaScript. Every escape sequence, e
 ## Installation
 
 ```bash
-npm install ghostty-web
+npm install @strantalis/workset-ghostty-web
 ```
 
 ## Usage
 
-ghostty-web aims to be API-compatible with the xterm.js API.
+`@strantalis/workset-ghostty-web` aims to be API-compatible with the xterm.js API.
 
 ```javascript
-import { init, Terminal } from 'ghostty-web';
+import { init, Terminal } from '@strantalis/workset-ghostty-web';
 
 await init();
 
@@ -65,6 +68,16 @@ websocket.onmessage = (e) => term.write(e.data);
 
 For a comprehensive client <-> server example, refer to the [demo](./demo/index.html#L141).
 
+If you use overlay scrollbars or reserve scrollback space elsewhere, configure the fit addon
+explicitly instead of patching terminal internals:
+
+```typescript
+import { FitAddon } from '@strantalis/workset-ghostty-web';
+
+const fitAddon = new FitAddon({ scrollbarWidth: 0 });
+term.loadAddon(fitAddon);
+```
+
 ## Development
 
 ghostty-web builds from Ghostty's source with a [patch](./patches/ghostty-wasm-api.patch) to expose additional
@@ -74,6 +87,21 @@ functionality.
 
 ```bash
 bun run build
+```
+
+## Local Publishing
+
+For local Workset prerelease flows, use the root `Makefile`:
+
+```bash
+make publish-workset
+```
+
+That bumps the package to the next `workset` prerelease, builds it, and publishes with the `workset` dist-tag. If you still think of these as "alphas," `make publish-alpha` is kept as an alias.
+For a stable local publish, set an explicit version:
+
+```bash
+make publish-release VERSION=0.3.1
 ```
 
 Mitchell Hashimoto (author of Ghostty) has [been working](https://mitchellh.com/writing/libghostty-is-coming) on `libghostty` which makes this all possible. The patches are very minimal thanks to the work the Ghostty team has done, and we expect them to get smaller.

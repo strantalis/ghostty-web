@@ -6,7 +6,7 @@
  *
  * Usage:
  * ```typescript
- * const fitAddon = new FitAddon();
+ * const fitAddon = new FitAddon({ scrollbarWidth: 0 });
  * term.loadAddon(fitAddon);
  * fitAddon.fit();              // Manual fit
  * fitAddon.observeResize();    // Auto-fit on resize
@@ -33,6 +33,10 @@ export interface ITerminalDimensions {
   rows: number;
 }
 
+export interface FitAddonOptions {
+  scrollbarWidth?: number;
+}
+
 // ============================================================================
 // FitAddon Class
 // ============================================================================
@@ -44,6 +48,11 @@ export class FitAddon implements ITerminalAddon {
   private _lastCols?: number;
   private _lastRows?: number;
   private _isResizing: boolean = false;
+  private readonly _scrollbarWidth: number;
+
+  public constructor(options: FitAddonOptions = {}) {
+    this._scrollbarWidth = normalizeScrollbarWidth(options.scrollbarWidth);
+  }
 
   /**
    * Activate the addon (called by Terminal.loadAddon)
@@ -185,7 +194,7 @@ export class FitAddon implements ITerminalAddon {
     }
 
     // Calculate available space (subtract padding since clientWidth includes padding)
-    const availableWidth = containerWidth - paddingLeft - paddingRight - DEFAULT_SCROLLBAR_WIDTH;
+    const availableWidth = containerWidth - paddingLeft - paddingRight - this._scrollbarWidth;
     const availableHeight = containerHeight - paddingTop - paddingBottom;
 
     // Calculate dimensions (enforce minimums)
@@ -239,4 +248,12 @@ export class FitAddon implements ITerminalAddon {
     // This gives us stable resize events when the CONTAINER changes, not when our canvas changes
     this._resizeObserver.observe(this._terminal.element);
   }
+}
+
+function normalizeScrollbarWidth(scrollbarWidth: number | undefined): number {
+  if (scrollbarWidth === undefined || !Number.isFinite(scrollbarWidth)) {
+    return DEFAULT_SCROLLBAR_WIDTH;
+  }
+
+  return Math.max(0, Math.floor(scrollbarWidth));
 }

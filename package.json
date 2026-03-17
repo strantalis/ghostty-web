@@ -1,6 +1,6 @@
 {
-  "name": "ghostty-web",
-  "version": "0.3.0",
+  "name": "@strantalis/workset-ghostty-web",
+  "version": "0.3.1-workset.2",
   "description": "Web-based terminal emulator using Ghostty's VT100 parser via WebAssembly",
   "type": "module",
   "main": "./dist/ghostty-web.umd.cjs",
@@ -33,12 +33,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/coder/ghostty-web.git"
+    "url": "https://github.com/strantalis/ghostty-web.git"
   },
-  "bugs": "https://github.com/coder/ghostty-web/issues",
-  "homepage": "https://github.com/coder/ghostty-web#readme",
+  "bugs": "https://github.com/strantalis/ghostty-web/issues",
+  "homepage": "https://github.com/strantalis/ghostty-web#readme",
   "license": "MIT",
-  "author": "Coder",
+  "author": "Sean Strantalis",
   "publishConfig": {
     "access": "public"
   },
