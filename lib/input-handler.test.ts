@@ -1192,4 +1192,138 @@ describe('InputHandler', () => {
       expect(dataReceived.length).toBe(0);
     });
   });
+
+  describe('processWheel', () => {
+    function createWheelEvent(
+      deltaY: number,
+      clientX: number,
+      clientY: number
+    ): WheelEvent {
+      return {
+        deltaY,
+        clientX,
+        clientY,
+        ctrlKey: false,
+        altKey: false,
+        shiftKey: false,
+        metaKey: false,
+        preventDefault: mock(() => {}),
+        stopPropagation: mock(() => {}),
+      } as unknown as WheelEvent;
+    }
+
+    test('returns false when mouse tracking is disabled', () => {
+      const mouseConfig = {
+        hasMouseTracking: () => false,
+        hasSgrMouseMode: () => true,
+        getCellDimensions: () => ({ width: 8, height: 16 }),
+        getCanvasOffset: () => ({ left: 0, top: 0 }),
+      };
+
+      const handler = new InputHandler(
+        ghostty,
+        container as any,
+        (data) => dataReceived.push(data),
+        () => { bellCalled = true; },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        mouseConfig
+      );
+
+      const result = handler.processWheel(createWheelEvent(-33, 40, 80));
+      expect(result).toBe(false);
+      expect(dataReceived.length).toBe(0);
+    });
+
+    test('returns true and sends SGR scroll up sequence when mouse tracking enabled', () => {
+      const mouseConfig = {
+        hasMouseTracking: () => true,
+        hasSgrMouseMode: () => true,
+        getCellDimensions: () => ({ width: 8, height: 16 }),
+        getCanvasOffset: () => ({ left: 0, top: 0 }),
+      };
+
+      const handler = new InputHandler(
+        ghostty,
+        container as any,
+        (data) => dataReceived.push(data),
+        () => { bellCalled = true; },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        mouseConfig
+      );
+
+      // deltaY < 0 = scroll up = button 64
+      // clientX=40, width=8 → col = floor(40/8)+1 = 6
+      // clientY=80, height=16 → row = floor(80/16)+1 = 6
+      const result = handler.processWheel(createWheelEvent(-33, 40, 80));
+      expect(result).toBe(true);
+      expect(dataReceived.length).toBe(1);
+      expect(dataReceived[0]).toBe('\x1b[<64;6;6M');
+    });
+
+    test('sends SGR scroll down sequence for positive deltaY', () => {
+      const mouseConfig = {
+        hasMouseTracking: () => true,
+        hasSgrMouseMode: () => true,
+        getCellDimensions: () => ({ width: 10, height: 20 }),
+        getCanvasOffset: () => ({ left: 0, top: 0 }),
+      };
+
+      const handler = new InputHandler(
+        ghostty,
+        container as any,
+        (data) => dataReceived.push(data),
+        () => { bellCalled = true; },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        mouseConfig
+      );
+
+      // deltaY > 0 = scroll down = button 65
+      // clientX=50, width=10 → col = floor(50/10)+1 = 6
+      // clientY=60, height=20 → row = floor(60/20)+1 = 4
+      const result = handler.processWheel(createWheelEvent(33, 50, 60));
+      expect(result).toBe(true);
+      expect(dataReceived.length).toBe(1);
+      expect(dataReceived[0]).toBe('\x1b[<65;6;4M');
+    });
+
+    test('accounts for canvas offset in cell coordinate computation', () => {
+      const mouseConfig = {
+        hasMouseTracking: () => true,
+        hasSgrMouseMode: () => true,
+        getCellDimensions: () => ({ width: 8, height: 16 }),
+        getCanvasOffset: () => ({ left: 100, top: 50 }),
+      };
+
+      const handler = new InputHandler(
+        ghostty,
+        container as any,
+        (data) => dataReceived.push(data),
+        () => { bellCalled = true; },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        mouseConfig
+      );
+
+      // clientX=116 - offset 100 = 16px → col = floor(16/8)+1 = 3
+      // clientY=82 - offset 50 = 32px → row = floor(32/16)+1 = 3
+      const result = handler.processWheel(createWheelEvent(-10, 116, 82));
+      expect(result).toBe(true);
+      expect(dataReceived[0]).toBe('\x1b[<64;3;3M');
+    });
+  });
 });

@@ -907,6 +907,23 @@ export class InputHandler {
   }
 
   /**
+   * Process a wheel event for mouse tracking.
+   * Called by Terminal when mouse tracking is active.
+   * Returns true if the event was handled.
+   */
+  processWheel(event: WheelEvent): boolean {
+    if (this.isDisposed) return false;
+    if (!this.mouseConfig?.hasMouseTracking()) return false;
+
+    const cell = this.pixelToCell(event);
+    if (!cell) return false;
+
+    const button = event.deltaY < 0 ? 64 : 65;
+    this.sendMouseEvent(button, cell.col, cell.row, false, event);
+    return true;
+  }
+
+  /**
    * Emit paste data with bracketed paste support
    */
   private emitPasteData(text: string): void {

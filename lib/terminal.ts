@@ -1552,6 +1552,12 @@ export class Terminal implements ITerminalCore {
       return;
     }
 
+    // When mouse tracking is active, forward wheel as proper mouse sequence
+    // (SGR/X10 encoded with cell coordinates) instead of arrow keys.
+    if (this.inputHandler?.processWheel(e)) {
+      return;
+    }
+
     // Check if in alternate screen mode (vim, less, htop, etc.)
     const isAltScreen = this.wasmTerm?.isAlternateScreen() ?? false;
 
