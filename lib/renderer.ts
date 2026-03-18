@@ -10,6 +10,7 @@
  * - Dirty line optimization for 60 FPS
  */
 
+import { renderBoxDrawing } from './box-drawing';
 import type { ITheme } from './interfaces';
 import type { SelectionManager } from './selection-manager';
 import type { GhosttyCell, ILink } from './types';
@@ -800,7 +801,15 @@ export class CanvasRenderer {
       return;
     }
 
-    // Set text style (skip for block elements above since they don't use font)
+    // Try pixel-perfect box drawing rendering (U+2500–U+257F)
+    if (renderBoxDrawing(this.ctx, cp, cellX, cellY, cellWidth, this.metrics.height)) {
+      if (cell.flags & CellFlags.FAINT) {
+        this.ctx.globalAlpha = 1.0;
+      }
+      return;
+    }
+
+    // Set text style (skip for block/box-drawing elements above since they don't use font)
     let fontStyle = '';
     if (cell.flags & CellFlags.ITALIC) fontStyle += 'italic ';
     if (cell.flags & CellFlags.BOLD) fontStyle += 'bold ';
