@@ -165,7 +165,7 @@ describe('Terminal', () => {
 
     test('onData can register listeners', async () => {
       const term = await createIsolatedTerminal();
-      const disposable = term.onData((data) => {
+      const disposable = term.onData((_data) => {
         // Listener callback
       });
       expect(typeof disposable.dispose).toBe('function');
@@ -322,7 +322,7 @@ describe('Terminal', () => {
       term.open(container!);
 
       const mockAddon = {
-        activate: (terminal: any) => {
+        activate: (_terminal: any) => {
           // Addon activation
         },
         dispose: () => {
@@ -341,7 +341,7 @@ describe('Terminal', () => {
 
       let activateCalled = false;
       const mockAddon = {
-        activate: (terminal: any) => {
+        activate: (_terminal: any) => {
           activateCalled = true;
         },
         dispose: () => {},
@@ -360,7 +360,7 @@ describe('Terminal', () => {
 
       let disposeCalled = false;
       const mockAddon = {
-        activate: (terminal: any) => {},
+        activate: (_terminal: any) => {},
         dispose: () => {
           disposeCalled = true;
         },
@@ -1015,7 +1015,7 @@ describe('attachCustomKeyEventHandler()', () => {
       if (!container) return;
       term.open(container!);
 
-      const handler = (e: KeyboardEvent) => false;
+      const handler = (_e: KeyboardEvent) => false;
       expect(() => term.attachCustomKeyEventHandler(handler)).not.toThrow();
       term.dispose();
     });
@@ -1026,7 +1026,7 @@ describe('attachCustomKeyEventHandler()', () => {
       if (!container) return;
       term.open(container!);
 
-      const handler = (e: KeyboardEvent) => false;
+      const handler = (_e: KeyboardEvent) => false;
       expect(() => term.attachCustomKeyEventHandler(handler)).not.toThrow();
       term.dispose();
     });
@@ -2379,10 +2379,10 @@ describe('Options Proxy handleOptionChange', () => {
     expect(term.options.cursorStyle).toBe('underline');
 
     // Access renderer to verify it was updated
-    // @ts-ignore - accessing private for test
+    // @ts-expect-error - accessing private for test
     const renderer = term.renderer;
     expect(renderer).toBeDefined();
-    // @ts-ignore - accessing private for test
+    // @ts-expect-error - accessing private for test
     expect(renderer.cursorStyle).toBe('underline');
 
     term.dispose();
@@ -2401,17 +2401,17 @@ describe('Options Proxy handleOptionChange', () => {
     term.options.cursorBlink = true;
     expect(term.options.cursorBlink).toBe(true);
 
-    // @ts-ignore - accessing private for test
+    // @ts-expect-error - accessing private for test
     const renderer = term.renderer;
-    // @ts-ignore - accessing private for test
+    // @ts-expect-error - accessing private for test
     expect(renderer.cursorBlink).toBe(true);
-    // @ts-ignore - accessing private for test
+    // @ts-expect-error - accessing private for test
     expect(renderer.cursorBlinkInterval).toBeDefined();
 
     // Disable cursor blink
     term.options.cursorBlink = false;
     expect(term.options.cursorBlink).toBe(false);
-    // @ts-ignore - accessing private for test
+    // @ts-expect-error - accessing private for test
     expect(renderer.cursorBlink).toBe(false);
 
     term.dispose();
@@ -2469,11 +2469,11 @@ describe('Options Proxy handleOptionChange', () => {
     const term = await createIsolatedTerminal({ fontSize: 15, cols: 80, rows: 24 });
     term.open(container);
 
-    // @ts-ignore - accessing private for test
+    // @ts-expect-error - accessing private for test
     const renderer = term.renderer;
 
     // Verify initial font size
-    // @ts-ignore - accessing private for test
+    // @ts-expect-error - accessing private for test
     expect(renderer.fontSize).toBe(15);
 
     // Change font size
@@ -2483,7 +2483,7 @@ describe('Options Proxy handleOptionChange', () => {
     expect(term.options.fontSize).toBe(20);
 
     // Verify renderer's internal fontSize was updated
-    // @ts-ignore - accessing private for test
+    // @ts-expect-error - accessing private for test
     expect(renderer.fontSize).toBe(20);
 
     // Verify metrics were recalculated (getMetrics returns a copy)
@@ -2501,7 +2501,7 @@ describe('Options Proxy handleOptionChange', () => {
     const term = await createIsolatedTerminal({ fontFamily: 'monospace', cols: 80, rows: 24 });
     term.open(container);
 
-    // @ts-ignore - accessing private for test
+    // @ts-expect-error - accessing private for test
     const renderer = term.renderer;
 
     // Change font family
@@ -2511,7 +2511,7 @@ describe('Options Proxy handleOptionChange', () => {
     expect(term.options.fontFamily).toBe('Courier New, monospace');
 
     // Verify renderer was updated
-    // @ts-ignore - accessing private for test
+    // @ts-expect-error - accessing private for test
     expect(renderer.fontFamily).toBe('Courier New, monospace');
 
     term.dispose();

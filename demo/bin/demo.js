@@ -7,14 +7,13 @@
  * Run with: npx @ghostty-web/demo
  */
 
+// Node-pty for cross-platform PTY support
+import pty from '@lydell/node-pty';
 import fs from 'fs';
 import http from 'http';
 import { homedir } from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
-
-// Node-pty for cross-platform PTY support
-import pty from '@lydell/node-pty';
 // WebSocket server
 import { WebSocketServer } from 'ws';
 
@@ -29,6 +28,7 @@ const HTTP_PORT = process.env.PORT || (DEV_MODE ? 8000 : 8080);
 // ============================================================================
 
 import { createRequire } from 'module';
+
 const require = createRequire(import.meta.url);
 
 function findGhosttyWeb() {
@@ -64,7 +64,7 @@ function findGhosttyWeb() {
     if (fs.existsSync(path.join(distPath, 'ghostty-web.js')) && fs.existsSync(wasmPath)) {
       return { distPath, wasmPath, repoRoot: null };
     }
-  } catch (e) {
+  } catch (_e) {
     // require.resolve failed, package not found
   }
 
@@ -433,8 +433,8 @@ httpServer.on('upgrade', (req, socket, head) => {
 
 wss.on('connection', (ws, req) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
-  const cols = Number.parseInt(url.searchParams.get('cols') || '80');
-  const rows = Number.parseInt(url.searchParams.get('rows') || '24');
+  const cols = Number.parseInt(url.searchParams.get('cols') || '80', 10);
+  const rows = Number.parseInt(url.searchParams.get('rows') || '24', 10);
 
   // Create PTY
   const ptyProcess = createPtySession(cols, rows);
@@ -466,7 +466,7 @@ wss.on('connection', (ws, req) => {
           ptyProcess.resize(msg.cols, msg.rows);
           return;
         }
-      } catch (e) {
+      } catch (_e) {
         // Not JSON, treat as input
       }
     }

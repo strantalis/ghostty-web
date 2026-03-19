@@ -1,8 +1,6 @@
 {
-  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
-  "organizeImports": {
-    "enabled": true
-  },
+  "$schema": "https://biomejs.dev/schemas/2.4.8/schema.json",
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "linter": {
     "enabled": true,
     "rules": {
@@ -38,6 +36,16 @@
     }
   },
   "files": {
-    "ignore": ["node_modules", "dist", "coverage", "*.wasm", ".git", ".vite", "bun.lock"]
+    "includes": [
+      "**",
+      "!**/ghostty",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/coverage",
+      "!**/*.wasm",
+      "!**/.git",
+      "!**/.vite",
+      "!**/bun.lock"
+    ]
   }
 }

@@ -137,13 +137,13 @@
         </div>
 
         <div class="controls">
-          <button onclick="showStandardColors()">Standard Colors (16)</button>
-          <button onclick="show256Colors()">256-Color Palette</button>
-          <button onclick="showRGBColors()">RGB True Colors</button>
-          <button onclick="showTextStyles()">Text Styles</button>
-          <button onclick="showCombinations()">Combinations</button>
-          <button onclick="showAll()">Show All</button>
-          <button onclick="clearTerminal()">Clear</button>
+          <button type="button" onclick="showStandardColors()">Standard Colors (16)</button>
+          <button type="button" onclick="show256Colors()">256-Color Palette</button>
+          <button type="button" onclick="showRGBColors()">RGB True Colors</button>
+          <button type="button" onclick="showTextStyles()">Text Styles</button>
+          <button type="button" onclick="showCombinations()">Combinations</button>
+          <button type="button" onclick="showAll()">Show All</button>
+          <button type="button" onclick="clearTerminal()">Clear</button>
         </div>
 
         <div class="terminal-wrapper">
@@ -153,8 +153,8 @@
     </div>
 
     <script type="module">
-      import { init, Terminal } from '../lib/index.ts';
       import { FitAddon } from '../lib/addons/fit.ts';
+      import { init, Terminal } from '../lib/index.ts';
 
       let term;
       let fitAddon;
@@ -257,7 +257,7 @@
         writeln('');
       }
 
-      window.showStandardColors = function () {
+      window.showStandardColors = () => {
         term.clear();
         writeln('\x1b[1;36m═══ Standard 16 ANSI Colors ═══\x1b[0m');
         writeln('');
@@ -307,7 +307,7 @@
         writeln('');
       };
 
-      window.show256Colors = function () {
+      window.show256Colors = () => {
         term.clear();
         writeln('\x1b[1;36m═══ 256-Color Palette ═══\x1b[0m');
         writeln('');
@@ -357,7 +357,7 @@
         writeln('');
       };
 
-      window.showRGBColors = function () {
+      window.showRGBColors = () => {
         term.clear();
         writeln('\x1b[1;36m═══ RGB True Color (24-bit) ═══\x1b[0m');
         writeln('');
@@ -426,7 +426,7 @@
         writeln('');
       };
 
-      window.showTextStyles = function () {
+      window.showTextStyles = () => {
         term.clear();
         writeln('\x1b[1;36m═══ Text Styles ═══\x1b[0m');
         writeln('');
@@ -461,7 +461,7 @@
         writeln('');
       };
 
-      window.showCombinations = function () {
+      window.showCombinations = () => {
         term.clear();
         writeln('\x1b[1;36m═══ Style & Color Combinations ═══\x1b[0m');
         writeln('');
@@ -505,7 +505,7 @@
         writeln('');
       };
 
-      window.showAll = function () {
+      window.showAll = () => {
         showStandardColors();
         writeln('');
         writeln('\x1b[1;35m' + '═'.repeat(80) + '\x1b[0m');

@@ -320,7 +320,7 @@ describe('Terminal Scrolling', () => {
 
       // Should not crash when handleWheel is called without wasmTerm
       expect(() => {
-        const wheelEvent = new WheelEvent('wheel', {
+        const _wheelEvent = new WheelEvent('wheel', {
           deltaY: -100,
           bubbles: true,
           cancelable: true,

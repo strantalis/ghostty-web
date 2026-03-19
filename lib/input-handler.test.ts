@@ -5,7 +5,6 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { Ghostty } from './ghostty';
 import { InputHandler } from './input-handler';
-import { Key, KeyAction, Mods } from './types';
 
 // Mock DOM types for testing
 interface MockKeyboardEvent {
@@ -179,7 +178,7 @@ describe('InputHandler', () => {
   let ghostty: Ghostty;
   let container: ReturnType<typeof createMockContainer>;
   let dataReceived: string[];
-  let bellCalled: boolean;
+  let _bellCalled: boolean;
 
   beforeEach(async () => {
     // Create a fresh Ghostty WASM instance for complete test isolation
@@ -190,7 +189,7 @@ describe('InputHandler', () => {
 
     // Reset data tracking
     dataReceived = [];
-    bellCalled = false;
+    _bellCalled = false;
   });
 
   describe('Constructor and Lifecycle', () => {
@@ -200,7 +199,7 @@ describe('InputHandler', () => {
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -215,7 +214,7 @@ describe('InputHandler', () => {
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -231,7 +230,7 @@ describe('InputHandler', () => {
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -244,12 +243,12 @@ describe('InputHandler', () => {
 
   describe('Printable Characters', () => {
     test('encodes lowercase letters', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -261,12 +260,12 @@ describe('InputHandler', () => {
     });
 
     test('encodes uppercase letters (with shift)', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -275,12 +274,12 @@ describe('InputHandler', () => {
     });
 
     test('encodes digits', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -292,12 +291,12 @@ describe('InputHandler', () => {
     });
 
     test('encodes punctuation', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -309,12 +308,12 @@ describe('InputHandler', () => {
     });
 
     test('encodes space', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -325,12 +324,12 @@ describe('InputHandler', () => {
 
   describe('IME Composition', () => {
     test('handles composition sequence', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -360,12 +359,12 @@ describe('InputHandler', () => {
     });
 
     test('ignores keydown during composition', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -391,12 +390,12 @@ describe('InputHandler', () => {
     });
 
     test('cleans up text nodes in container after composition', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -422,12 +421,12 @@ describe('InputHandler', () => {
 
     test('avoids duplicate commit when compositionend fires before beforeinput', () => {
       const inputElement = createMockContainer();
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         },
         undefined,
         undefined,
@@ -444,12 +443,12 @@ describe('InputHandler', () => {
 
     test('avoids duplicate commit when beforeinput fires before compositionend', () => {
       const inputElement = createMockContainer();
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         },
         undefined,
         undefined,
@@ -467,12 +466,12 @@ describe('InputHandler', () => {
 
   describe('Control Characters', () => {
     test('encodes Ctrl+A', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -484,12 +483,12 @@ describe('InputHandler', () => {
     });
 
     test('encodes Ctrl+C', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -501,12 +500,12 @@ describe('InputHandler', () => {
     });
 
     test('encodes Ctrl+D', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -518,12 +517,12 @@ describe('InputHandler', () => {
     });
 
     test('encodes Ctrl+Z', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -535,12 +534,12 @@ describe('InputHandler', () => {
     });
 
     test('Cmd+C allows copy (no data sent)', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -554,12 +553,12 @@ describe('InputHandler', () => {
 
   describe('Special Keys', () => {
     test('encodes Enter', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -571,12 +570,12 @@ describe('InputHandler', () => {
     });
 
     test('encodes Tab', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -588,12 +587,12 @@ describe('InputHandler', () => {
     });
 
     test('encodes Escape', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -605,12 +604,12 @@ describe('InputHandler', () => {
     });
 
     test('encodes Backspace', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -625,12 +624,12 @@ describe('InputHandler', () => {
 
   describe('Arrow Keys', () => {
     test('encodes Up arrow', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -642,12 +641,12 @@ describe('InputHandler', () => {
     });
 
     test('encodes Down arrow', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -658,12 +657,12 @@ describe('InputHandler', () => {
     });
 
     test('encodes Left arrow', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -674,12 +673,12 @@ describe('InputHandler', () => {
     });
 
     test('encodes Right arrow', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -691,12 +690,12 @@ describe('InputHandler', () => {
 
     test('sends CSI sequences in normal cursor mode (mode 1 off)', () => {
       // Create handler with getMode callback that returns false (normal mode)
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         },
         undefined,
         undefined,
@@ -718,12 +717,12 @@ describe('InputHandler', () => {
 
     test('sends SS3 sequences in application cursor mode (mode 1 on)', () => {
       // Create handler with getMode callback that returns true for mode 1
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         },
         undefined,
         undefined,
@@ -752,7 +751,7 @@ describe('InputHandler', () => {
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         },
         undefined,
         undefined,
@@ -775,12 +774,12 @@ describe('InputHandler', () => {
 
   describe('Function Keys', () => {
     test('encodes F1', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -792,12 +791,12 @@ describe('InputHandler', () => {
     });
 
     test('encodes F12', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -811,12 +810,12 @@ describe('InputHandler', () => {
 
   describe('Navigation Keys', () => {
     test('encodes Home', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -827,12 +826,12 @@ describe('InputHandler', () => {
     });
 
     test('encodes End', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -843,12 +842,12 @@ describe('InputHandler', () => {
     });
 
     test('encodes PageUp', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -859,12 +858,12 @@ describe('InputHandler', () => {
     });
 
     test('encodes PageDown', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -875,12 +874,12 @@ describe('InputHandler', () => {
     });
 
     test('encodes Delete', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -891,12 +890,12 @@ describe('InputHandler', () => {
     });
 
     test('encodes Insert', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -909,12 +908,12 @@ describe('InputHandler', () => {
 
   describe('Event Prevention', () => {
     test('prevents default on printable characters', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -925,12 +924,12 @@ describe('InputHandler', () => {
     });
 
     test('prevents default on special keys', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -941,12 +940,12 @@ describe('InputHandler', () => {
     });
 
     test('prevents default on Ctrl+keys', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -959,12 +958,12 @@ describe('InputHandler', () => {
 
   describe('Unknown Keys', () => {
     test('ignores unmapped keys', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -978,12 +977,12 @@ describe('InputHandler', () => {
 
   describe('Modifier Combinations', () => {
     test('handles Ctrl+Shift combinations', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -995,12 +994,12 @@ describe('InputHandler', () => {
     });
 
     test('handles Alt combinations', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -1014,12 +1013,12 @@ describe('InputHandler', () => {
 
   describe('Clipboard Operations', () => {
     test('handles paste event', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -1034,12 +1033,12 @@ describe('InputHandler', () => {
 
     test('handles beforeinput insertFromPaste with data', () => {
       const inputElement = createMockContainer();
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         },
         undefined,
         undefined,
@@ -1059,12 +1058,12 @@ describe('InputHandler', () => {
 
     test('uses bracketed paste for beforeinput insertFromPaste', () => {
       const inputElement = createMockContainer();
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         },
         undefined,
         undefined,
@@ -1083,12 +1082,12 @@ describe('InputHandler', () => {
     });
 
     test('handles multi-line paste', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -1103,12 +1102,12 @@ describe('InputHandler', () => {
 
     test('ignores beforeinput insertFromPaste when paste already handled', () => {
       const inputElement = createMockContainer();
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         },
         undefined,
         undefined,
@@ -1130,12 +1129,12 @@ describe('InputHandler', () => {
 
     test('ignores paste when beforeinput insertFromPaste already handled', () => {
       const inputElement = createMockContainer();
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         },
         undefined,
         undefined,
@@ -1156,12 +1155,12 @@ describe('InputHandler', () => {
     });
 
     test('ignores paste with no clipboard data', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -1173,12 +1172,12 @@ describe('InputHandler', () => {
     });
 
     test('ignores paste with empty text', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -1190,12 +1189,12 @@ describe('InputHandler', () => {
     });
 
     test('allows Ctrl+V to trigger paste', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -1206,12 +1205,12 @@ describe('InputHandler', () => {
     });
 
     test('allows Cmd+V to trigger paste', () => {
-      const handler = new InputHandler(
+      const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         }
       );
 
@@ -1250,7 +1249,7 @@ describe('InputHandler', () => {
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         },
         undefined,
         undefined,
@@ -1281,7 +1280,7 @@ describe('InputHandler', () => {
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         },
         undefined,
         undefined,
@@ -1317,7 +1316,7 @@ describe('InputHandler', () => {
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         },
         undefined,
         undefined,
@@ -1353,7 +1352,7 @@ describe('InputHandler', () => {
         container as any,
         (data) => dataReceived.push(data),
         () => {
-          bellCalled = true;
+          _bellCalled = true;
         },
         undefined,
         undefined,

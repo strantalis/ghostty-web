@@ -572,7 +572,7 @@ export class SelectionManager {
 
     // CRITICAL FIX: Listen for mouseup on DOCUMENT, not just canvas
     // This catches mouseup events that happen outside the canvas (common during drag)
-    this.boundMouseUpHandler = (e: MouseEvent) => {
+    this.boundMouseUpHandler = (_e: MouseEvent) => {
       if (this.isSelecting) {
         this.isSelecting = false;
         this.stopAutoScroll();
@@ -664,7 +664,7 @@ export class SelectionManager {
     this.boundContextMenuHandler = (e: MouseEvent) => {
       // Position textarea at mouse cursor
       const canvas = this.renderer.getCanvas();
-      const rect = canvas.getBoundingClientRect();
+      const _rect = canvas.getBoundingClientRect();
 
       this.textarea.style.position = 'fixed';
       this.textarea.style.left = `${e.clientX}px`;
@@ -970,7 +970,7 @@ export class SelectionManager {
           this.copyWithWriteText(text);
         });
         return;
-      } catch (err) {
+      } catch (_err) {
         // ClipboardItem not supported or failed, fall through
       }
     }

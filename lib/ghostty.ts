@@ -20,9 +20,9 @@ import {
   type KittyKeyFlags,
   type MouseEncoderSize,
   type MouseEventData,
-  type RGB,
   type RenderStateColors,
   type RenderStateCursor,
+  type RGB,
   type TerminalHandle,
 } from './types';
 
@@ -32,12 +32,12 @@ export {
   type Cursor,
   DirtyState,
   type GhosttyCell,
+  GhosttyResult,
   type GhosttyTerminalConfig,
   KeyEncoderOption,
-  GhosttyResult,
-  type RGB,
   type RenderStateColors,
   type RenderStateCursor,
+  type RGB,
 };
 
 /**

@@ -36,7 +36,7 @@ function setSelectionAbsolute(
 /**
  * Helper to convert viewport row to absolute row
  */
-function viewportToAbsolute(term: Terminal, viewportRow: number): number {
+function _viewportToAbsolute(term: Terminal, viewportRow: number): number {
   const scrollbackLength = term.wasmTerm?.getScrollbackLength() ?? 0;
   const viewportY = term.getViewportY();
   return scrollbackLength + viewportRow - Math.floor(viewportY);

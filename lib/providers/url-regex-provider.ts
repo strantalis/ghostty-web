@@ -8,7 +8,7 @@
  * take precedence over regex-detected URLs.
  */
 
-import type { IBufferRange, ILink, ILinkProvider } from '../types';
+import type { ILink, ILinkProvider } from '../types';
 
 /**
  * URL Regex Provider
@@ -30,7 +30,7 @@ export class UrlRegexProvider implements ILinkProvider {
    * Excludes file paths (no ./ or ../ or bare /)
    */
   private static readonly URL_REGEX =
-    /(?:https?:\/\/|mailto:|ftp:\/\/|ssh:\/\/|git:\/\/|tel:|magnet:|gemini:\/\/|gopher:\/\/|news:)[\w\-.~:\/?#@!$&*+,;=%]+/gi;
+    /(?:https?:\/\/|mailto:|ftp:\/\/|ssh:\/\/|git:\/\/|tel:|magnet:|gemini:\/\/|gopher:\/\/|news:)[\w\-.~:/?#@!$&*+,;=%]+/gi;
 
   /**
    * Characters to strip from end of URLs
