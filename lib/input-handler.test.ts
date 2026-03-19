@@ -549,6 +549,81 @@ describe('InputHandler', () => {
       // SelectionManager handles the actual copying
       expect(dataReceived.length).toBe(0);
     });
+
+    test('suppresses leaked beforeinput text after Ctrl+C keydown', () => {
+      const inputElement = createMockContainer();
+      const _handler = new InputHandler(
+        ghostty,
+        container as any,
+        (data) => dataReceived.push(data),
+        () => {
+          _bellCalled = true;
+        },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        inputElement as any
+      );
+
+      simulateKey(container, createKeyEvent('KeyC', 'c', { ctrl: true }));
+      const beforeInputEvent = createBeforeInputEvent('insertText', 'c');
+      inputElement.dispatchEvent(beforeInputEvent);
+
+      expect(dataReceived.length).toBe(1);
+      expect(dataReceived[0].charCodeAt(0)).toBe(0x03);
+      expect(beforeInputEvent.preventDefault).toHaveBeenCalled();
+    });
+
+    test('suppresses leaked beforeinput text for other control chords', () => {
+      const inputElement = createMockContainer();
+      const _handler = new InputHandler(
+        ghostty,
+        container as any,
+        (data) => dataReceived.push(data),
+        () => {
+          _bellCalled = true;
+        },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        inputElement as any
+      );
+
+      simulateKey(container, createKeyEvent('KeyZ', 'z', { ctrl: true }));
+      const beforeInputEvent = createBeforeInputEvent('insertText', 'z');
+      inputElement.dispatchEvent(beforeInputEvent);
+
+      expect(dataReceived.length).toBe(1);
+      expect(dataReceived[0].charCodeAt(0)).toBe(0x1a);
+      expect(beforeInputEvent.preventDefault).toHaveBeenCalled();
+    });
+
+    test('suppresses case-normalized leaked beforeinput text for Ctrl+Shift chords', () => {
+      const inputElement = createMockContainer();
+      const _handler = new InputHandler(
+        ghostty,
+        container as any,
+        (data) => dataReceived.push(data),
+        () => {
+          _bellCalled = true;
+        },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        inputElement as any
+      );
+
+      simulateKey(container, createKeyEvent('KeyC', 'C', { ctrl: true, shift: true }));
+      const beforeInputEvent = createBeforeInputEvent('insertText', 'c');
+      inputElement.dispatchEvent(beforeInputEvent);
+
+      expect(dataReceived.length).toBe(1);
+      expect(dataReceived[0].charCodeAt(0)).toBe(0x03);
+      expect(beforeInputEvent.preventDefault).toHaveBeenCalled();
+    });
   });
 
   describe('Special Keys', () => {
@@ -1009,9 +1084,57 @@ describe('InputHandler', () => {
       // Alt+A often produces ESC a or similar
       expect(dataReceived[0].length).toBeGreaterThan(0);
     });
+
+    test('preserves Ctrl+Alt printable input without dropping text', () => {
+      const inputElement = createMockContainer();
+      const _handler = new InputHandler(
+        ghostty,
+        container as any,
+        (data) => dataReceived.push(data),
+        () => {
+          _bellCalled = true;
+        },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        inputElement as any
+      );
+
+      simulateKey(container, createKeyEvent('KeyE', '€', { ctrl: true, alt: true }));
+      const beforeInputEvent = createBeforeInputEvent('insertText', '€');
+      inputElement.dispatchEvent(beforeInputEvent);
+
+      expect(dataReceived).toEqual(['€']);
+      expect(beforeInputEvent.preventDefault).toHaveBeenCalled();
+    });
   });
 
   describe('Clipboard Operations', () => {
+    test('de-dupes plain typing across keydown and beforeinput', () => {
+      const inputElement = createMockContainer();
+      const _handler = new InputHandler(
+        ghostty,
+        container as any,
+        (data) => dataReceived.push(data),
+        () => {
+          _bellCalled = true;
+        },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        inputElement as any
+      );
+
+      simulateKey(container, createKeyEvent('KeyA', 'a'));
+      const beforeInputEvent = createBeforeInputEvent('insertText', 'a');
+      inputElement.dispatchEvent(beforeInputEvent);
+
+      expect(dataReceived).toEqual(['a']);
+      expect(beforeInputEvent.preventDefault).toHaveBeenCalled();
+    });
+
     test('handles paste event', () => {
       const _handler = new InputHandler(
         ghostty,

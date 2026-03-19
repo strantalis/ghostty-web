@@ -172,6 +172,7 @@ export interface MouseTrackingConfig {
 }
 
 export class InputHandler {
+  private static readonly ASCII_LETTER_PATTERN = /^[A-Za-z]$/;
   private encoder: KeyEncoder;
   private mouseEncoder?: MouseEncoder;
   private container: HTMLElement;
@@ -198,6 +199,8 @@ export class InputHandler {
   private isDisposed = false;
   private mouseButtonsPressed = 0; // Track which buttons are pressed for motion reporting
   private lastKeyDownData: string | null = null;
+  private lastKeyDownBeforeInputText: string | null = null;
+  private lastKeyDownSuppressPrintableBeforeInput = false;
   private lastKeyDownTime = 0;
   private lastPasteData: string | null = null;
   private lastPasteTime = 0;
@@ -357,6 +360,45 @@ export class InputHandler {
 
     // If key produces a single printable character
     return event.key.length === 1;
+  }
+
+  /**
+   * Determine whether a handled keydown should suppress a following printable beforeinput.
+   * This covers control/meta chords that emit terminal data on keydown while browsers may
+   * still surface the base printable character through beforeinput.
+   */
+  private getPrintableBeforeInputCandidate(event: KeyboardEvent): string | null {
+    if (event.key.length !== 1) {
+      return null;
+    }
+
+    // AltGr uses Ctrl+Alt to produce printable text on many layouts. Keep it on the
+    // exact-match de-dupe path so international input still works.
+    if (event.ctrlKey && !event.altKey) {
+      return event.key;
+    }
+
+    if (event.metaKey) {
+      return event.key;
+    }
+
+    return null;
+  }
+
+  /**
+   * Compare beforeinput text against a recorded printable candidate.
+   * Browsers may normalize modified letter chords to lowercase beforeinput text.
+   */
+  private matchesPrintableBeforeInputCandidate(candidate: string, data: string): boolean {
+    if (candidate === data) {
+      return true;
+    }
+
+    return (
+      InputHandler.ASCII_LETTER_PATTERN.test(candidate) &&
+      InputHandler.ASCII_LETTER_PATTERN.test(data) &&
+      candidate.toLowerCase() === data.toLowerCase()
+    );
   }
 
   /**
@@ -552,7 +594,11 @@ export class InputHandler {
       // Emit the data
       if (data.length > 0) {
         this.onDataCallback(data);
-        this.recordKeyDownData(data);
+        const beforeInputText = this.getPrintableBeforeInputCandidate(event);
+        this.recordKeyDownData(data, {
+          beforeInputText,
+          suppressPrintableBeforeInput: beforeInputText !== null,
+        });
       }
     } catch (error) {
       // Encoding failed - log but don't crash
@@ -911,8 +957,16 @@ export class InputHandler {
   /**
    * Record keydown data for beforeinput de-duplication
    */
-  private recordKeyDownData(data: string): void {
+  private recordKeyDownData(
+    data: string,
+    options?: {
+      beforeInputText?: string | null;
+      suppressPrintableBeforeInput?: boolean;
+    }
+  ): void {
     this.lastKeyDownData = data;
+    this.lastKeyDownBeforeInputText = options?.beforeInputText ?? null;
+    this.lastKeyDownSuppressPrintableBeforeInput = options?.suppressPrintableBeforeInput ?? false;
     this.lastKeyDownTime = this.getNow();
   }
 
@@ -935,8 +989,13 @@ export class InputHandler {
     const now = this.getNow();
     const isDuplicate =
       now - this.lastKeyDownTime < InputHandler.BEFORE_INPUT_IGNORE_MS &&
-      this.lastKeyDownData === data;
+      (this.lastKeyDownData === data ||
+        (this.lastKeyDownSuppressPrintableBeforeInput &&
+          this.lastKeyDownBeforeInputText !== null &&
+          this.matchesPrintableBeforeInputCandidate(this.lastKeyDownBeforeInputText, data)));
     this.lastKeyDownData = null;
+    this.lastKeyDownBeforeInputText = null;
+    this.lastKeyDownSuppressPrintableBeforeInput = false;
     return isDuplicate;
   }
 
