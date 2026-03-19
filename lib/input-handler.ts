@@ -177,7 +177,6 @@ export class InputHandler {
   private container: HTMLElement;
   private inputElement?: HTMLElement;
   private onDataCallback: (data: string) => void;
-  private onBellCallback: () => void;
   private onKeyCallback?: (keyEvent: IKeyEvent) => void;
   private customKeyEventHandler?: (event: KeyboardEvent) => boolean;
   private getModeCallback?: (mode: number) => boolean;
@@ -227,7 +226,7 @@ export class InputHandler {
     ghostty: Ghostty,
     container: HTMLElement,
     onData: (data: string) => void,
-    onBell: () => void,
+    _onBell: () => void,
     onKey?: (keyEvent: IKeyEvent) => void,
     customKeyEventHandler?: (event: KeyboardEvent) => boolean,
     getMode?: (mode: number) => boolean,
@@ -241,7 +240,6 @@ export class InputHandler {
     this.container = container;
     this.inputElement = inputElement;
     this.onDataCallback = onData;
-    this.onBellCallback = onBell;
     this.onKeyCallback = onKey;
     this.customKeyEventHandler = customKeyEventHandler;
     this.getModeCallback = getMode;
