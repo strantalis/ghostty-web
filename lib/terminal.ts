@@ -434,11 +434,14 @@ export class Terminal implements ITerminalCore {
       const wasmTerm = this.wasmTerm;
       const mouseConfig: MouseTrackingConfig = {
         hasMouseTracking: () => wasmTerm?.hasMouseTracking() ?? false,
-        hasSgrMouseMode: () => wasmTerm?.getMode(1006, false) ?? true, // SGR extended mode
         getCellDimensions: () => ({
           width: renderer.charWidth,
           height: renderer.charHeight,
         }),
+        getSurfaceSize: () => {
+          const rect = canvas.getBoundingClientRect();
+          return { width: rect.width, height: rect.height };
+        },
         getCanvasOffset: () => {
           const rect = canvas.getBoundingClientRect();
           return { left: rect.left, top: rect.top };
@@ -477,7 +480,8 @@ export class Terminal implements ITerminalCore {
           return this.copySelection();
         },
         this.textarea,
-        mouseConfig
+        mouseConfig,
+        () => this.wasmTerm ?? undefined
       );
 
       // Create selection manager (pass textarea for context menu positioning)

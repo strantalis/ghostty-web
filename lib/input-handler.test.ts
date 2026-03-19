@@ -742,6 +742,35 @@ describe('InputHandler', () => {
       expect(dataReceived[2]).toBe('\x1bOD');
       expect(dataReceived[3]).toBe('\x1bOC');
     });
+
+    test('syncs cursor-key mode from the Ghostty terminal before encoding', () => {
+      const terminal = ghostty.createTerminal(80, 24);
+      terminal.write('\x1b[?1h');
+
+      const handler = new InputHandler(
+        ghostty,
+        container as any,
+        (data) => dataReceived.push(data),
+        () => {
+          bellCalled = true;
+        },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        () => terminal
+      );
+
+      simulateKey(container, createKeyEvent('ArrowUp', 'ArrowUp'));
+      simulateKey(container, createKeyEvent('ArrowDown', 'ArrowDown'));
+
+      expect(dataReceived).toEqual(['\x1bOA', '\x1bOB']);
+
+      handler.dispose();
+      terminal.free();
+    });
   });
 
   describe('Function Keys', () => {
@@ -1211,8 +1240,8 @@ describe('InputHandler', () => {
     test('returns false when mouse tracking is disabled', () => {
       const mouseConfig = {
         hasMouseTracking: () => false,
-        hasSgrMouseMode: () => true,
         getCellDimensions: () => ({ width: 8, height: 16 }),
+        getSurfaceSize: () => ({ width: 640, height: 384 }),
         getCanvasOffset: () => ({ left: 0, top: 0 }),
       };
 
@@ -1237,10 +1266,13 @@ describe('InputHandler', () => {
     });
 
     test('returns true and sends SGR scroll up sequence when mouse tracking enabled', () => {
+      const terminal = ghostty.createTerminal(80, 24);
+      terminal.write('\x1b[?1003h\x1b[?1006h');
+
       const mouseConfig = {
         hasMouseTracking: () => true,
-        hasSgrMouseMode: () => true,
         getCellDimensions: () => ({ width: 8, height: 16 }),
+        getSurfaceSize: () => ({ width: 640, height: 384 }),
         getCanvasOffset: () => ({ left: 0, top: 0 }),
       };
 
@@ -1256,7 +1288,8 @@ describe('InputHandler', () => {
         undefined,
         undefined,
         undefined,
-        mouseConfig
+        mouseConfig,
+        () => terminal
       );
 
       // deltaY < 0 = scroll up = button 64
@@ -1269,10 +1302,13 @@ describe('InputHandler', () => {
     });
 
     test('sends SGR scroll down sequence for positive deltaY', () => {
+      const terminal = ghostty.createTerminal(80, 24);
+      terminal.write('\x1b[?1003h\x1b[?1006h');
+
       const mouseConfig = {
         hasMouseTracking: () => true,
-        hasSgrMouseMode: () => true,
         getCellDimensions: () => ({ width: 10, height: 20 }),
+        getSurfaceSize: () => ({ width: 800, height: 480 }),
         getCanvasOffset: () => ({ left: 0, top: 0 }),
       };
 
@@ -1288,7 +1324,8 @@ describe('InputHandler', () => {
         undefined,
         undefined,
         undefined,
-        mouseConfig
+        mouseConfig,
+        () => terminal
       );
 
       // deltaY > 0 = scroll down = button 65
@@ -1301,10 +1338,13 @@ describe('InputHandler', () => {
     });
 
     test('accounts for canvas offset in cell coordinate computation', () => {
+      const terminal = ghostty.createTerminal(80, 24);
+      terminal.write('\x1b[?1003h\x1b[?1006h');
+
       const mouseConfig = {
         hasMouseTracking: () => true,
-        hasSgrMouseMode: () => true,
         getCellDimensions: () => ({ width: 8, height: 16 }),
+        getSurfaceSize: () => ({ width: 640, height: 384 }),
         getCanvasOffset: () => ({ left: 100, top: 50 }),
       };
 
@@ -1320,7 +1360,8 @@ describe('InputHandler', () => {
         undefined,
         undefined,
         undefined,
-        mouseConfig
+        mouseConfig,
+        () => terminal
       );
 
       // clientX=116 - offset 100 = 16px → col = floor(16/8)+1 = 3

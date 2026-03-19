@@ -350,6 +350,65 @@ export interface KeyEvent {
 }
 
 // ============================================================================
+// Mouse Encoder Types
+// ============================================================================
+
+export enum GhosttyResult {
+  SUCCESS = 0,
+  OUT_OF_MEMORY = -1,
+  INVALID_VALUE = -2,
+  OUT_OF_SPACE = -3,
+}
+
+export enum MouseAction {
+  PRESS = 0,
+  RELEASE = 1,
+  MOTION = 2,
+}
+
+export enum MouseButton {
+  UNKNOWN = 0,
+  LEFT = 1,
+  RIGHT = 2,
+  MIDDLE = 3,
+  FOUR = 4,
+  FIVE = 5,
+  SIX = 6,
+  SEVEN = 7,
+  EIGHT = 8,
+  NINE = 9,
+  TEN = 10,
+  ELEVEN = 11,
+}
+
+export enum MouseEncoderOption {
+  EVENT = 0,
+  FORMAT = 1,
+  SIZE = 2,
+  ANY_BUTTON_PRESSED = 3,
+  TRACK_LAST_CELL = 4,
+}
+
+export interface MouseEncoderSize {
+  screenWidth: number;
+  screenHeight: number;
+  cellWidth: number;
+  cellHeight: number;
+  paddingTop?: number;
+  paddingBottom?: number;
+  paddingRight?: number;
+  paddingLeft?: number;
+}
+
+export interface MouseEventData {
+  action: MouseAction;
+  button?: MouseButton;
+  mods: Mods;
+  x: number;
+  y: number;
+}
+
+// ============================================================================
 // WASM Exports Interface
 // ============================================================================
 
@@ -391,6 +450,7 @@ export interface GhosttyWasmExports extends WebAssembly.Exports {
   ghostty_key_encoder_new(allocator: number, encoderPtrPtr: number): number;
   ghostty_key_encoder_free(encoder: number): void;
   ghostty_key_encoder_setopt(encoder: number, option: number, valuePtr: number): number;
+  ghostty_key_encoder_setopt_from_terminal(encoder: number, terminal: TerminalHandle): void;
   ghostty_key_encoder_encode(
     encoder: number,
     eventPtr: number,
@@ -406,6 +466,29 @@ export interface GhosttyWasmExports extends WebAssembly.Exports {
   ghostty_key_event_set_key(event: number, key: number): void;
   ghostty_key_event_set_mods(event: number, mods: number): void;
   ghostty_key_event_set_utf8(event: number, ptr: number, len: number): void;
+
+  // Mouse encoder
+  ghostty_mouse_encoder_new(allocator: number, encoderPtrPtr: number): number;
+  ghostty_mouse_encoder_free(encoder: number): void;
+  ghostty_mouse_encoder_setopt(encoder: number, option: number, valuePtr: number): void;
+  ghostty_mouse_encoder_setopt_from_terminal(encoder: number, terminal: TerminalHandle): void;
+  ghostty_mouse_encoder_reset(encoder: number): void;
+  ghostty_mouse_encoder_encode(
+    encoder: number,
+    eventPtr: number,
+    bufPtr: number,
+    bufLen: number,
+    writtenPtr: number
+  ): number;
+
+  // Mouse event
+  ghostty_mouse_event_new(allocator: number, eventPtrPtr: number): number;
+  ghostty_mouse_event_free(event: number): void;
+  ghostty_mouse_event_set_action(event: number, action: number): void;
+  ghostty_mouse_event_set_button(event: number, button: number): void;
+  ghostty_mouse_event_clear_button(event: number): void;
+  ghostty_mouse_event_set_mods(event: number, mods: number): void;
+  ghostty_mouse_event_set_position_xy(event: number, x: number, y: number): void;
 
   // Terminal lifecycle
   ghostty_terminal_new_simple(cols: number, rows: number): TerminalHandle;

@@ -102,10 +102,18 @@ index 5be6db001..a7af33932 100644
  }
  #endif
 diff --git a/src/lib_vt.zig b/src/lib_vt.zig
-index 16b47a6be..5a7f404d3 100644
+index 16b47a6be..987fc6ef2 100644
 --- a/src/lib_vt.zig
 +++ b/src/lib_vt.zig
-@@ -190,6 +190,37 @@ comptime {
+@@ -150,6 +150,7 @@ comptime {
+         @export(&c.mouse_event_set_mods, .{ .name = "ghostty_mouse_event_set_mods" });
+         @export(&c.mouse_event_get_mods, .{ .name = "ghostty_mouse_event_get_mods" });
+         @export(&c.mouse_event_set_position, .{ .name = "ghostty_mouse_event_set_position" });
++        @export(&c.mouse_event_set_position_xy, .{ .name = "ghostty_mouse_event_set_position_xy" });
+         @export(&c.mouse_event_get_position, .{ .name = "ghostty_mouse_event_get_position" });
+         @export(&c.mouse_encoder_new, .{ .name = "ghostty_mouse_encoder_new" });
+         @export(&c.mouse_encoder_free, .{ .name = "ghostty_mouse_encoder_free" });
+@@ -190,6 +191,37 @@ comptime {
          @export(&c.terminal_mode_get, .{ .name = "ghostty_terminal_mode_get" });
          @export(&c.terminal_mode_set, .{ .name = "ghostty_terminal_mode_set" });
  
@@ -144,7 +152,7 @@ index 16b47a6be..5a7f404d3 100644
          if (builtin.target.cpu.arch.isWasm()) {
              const alloc = @import("lib/allocator/convenience.zig");
 diff --git a/src/terminal/c/main.zig b/src/terminal/c/main.zig
-index c8388ef08..f48adc63b 100644
+index c8388ef08..27421c352 100644
 --- a/src/terminal/c/main.zig
 +++ b/src/terminal/c/main.zig
 @@ -10,6 +10,7 @@ pub const mouse_encode = @import("mouse_encode.zig");
@@ -155,7 +163,18 @@ index c8388ef08..f48adc63b 100644
  
  // The full C API, unexported.
  pub const osc_new = osc.new;
-@@ -96,6 +97,37 @@ pub const terminal_scroll_viewport = terminal.scroll_viewport;
+@@ -78,6 +79,10 @@ pub const mouse_event_get_mods = mouse_event.get_mods;
+ pub const mouse_event_set_position = mouse_event.set_position;
+ pub const mouse_event_get_position = mouse_event.get_position;
+ 
++pub fn mouse_event_set_position_xy(event: mouse_event.Event, x: f32, y: f32) callconv(.c) void {
++    mouse_event.set_position(event, .{ .x = x, .y = y });
++}
++
+ pub const mouse_encoder_new = mouse_encode.new;
+ pub const mouse_encoder_free = mouse_encode.free;
+ pub const mouse_encoder_setopt = mouse_encode.setopt;
+@@ -96,6 +101,37 @@ pub const terminal_scroll_viewport = terminal.scroll_viewport;
  pub const terminal_mode_get = terminal.mode_get;
  pub const terminal_mode_set = terminal.mode_set;
  
@@ -193,7 +212,7 @@ index c8388ef08..f48adc63b 100644
  test {
      _ = color;
      _ = focus;
-@@ -109,6 +141,7 @@ test {
+@@ -109,6 +145,7 @@ test {
      _ = paste;
      _ = sgr;
      _ = terminal;
@@ -228,10 +247,10 @@ index 967f014ed..4c073b425 100644
                  self.colors.foreground = bg;
 diff --git a/src/terminal/c/terminal_wasm.zig b/src/terminal/c/terminal_wasm.zig
 new file mode 100644
-index 000000000..8e438f36b
+index 000000000..f0f041d15
 --- /dev/null
 +++ b/src/terminal/c/terminal_wasm.zig
-@@ -0,0 +1,1108 @@
+@@ -0,0 +1,1145 @@
 +//! WASM Terminal Extensions
 +//!
 +//! High-performance terminal API optimized for WebAssembly.
@@ -515,6 +534,43 @@ index 000000000..8e438f36b
 +                self.terminal.screens.active.alloc,
 +                if (enabled) .@"132_cols" else .@"80_cols",
 +            ),
++            .synchronized_output,
++            .linefeed,
++            .in_band_size_reports,
++            .focus_event,
++            => {},
++            .mouse_event_x10 => {
++                if (enabled) {
++                    self.terminal.flags.mouse_event = .x10;
++                } else {
++                    self.terminal.flags.mouse_event = .none;
++                }
++            },
++            .mouse_event_normal => {
++                if (enabled) {
++                    self.terminal.flags.mouse_event = .normal;
++                } else {
++                    self.terminal.flags.mouse_event = .none;
++                }
++            },
++            .mouse_event_button => {
++                if (enabled) {
++                    self.terminal.flags.mouse_event = .button;
++                } else {
++                    self.terminal.flags.mouse_event = .none;
++                }
++            },
++            .mouse_event_any => {
++                if (enabled) {
++                    self.terminal.flags.mouse_event = .any;
++                } else {
++                    self.terminal.flags.mouse_event = .none;
++                }
++            },
++            .mouse_format_utf8 => self.terminal.flags.mouse_format = if (enabled) .utf8 else .x10,
++            .mouse_format_sgr => self.terminal.flags.mouse_format = if (enabled) .sgr else .x10,
++            .mouse_format_urxvt => self.terminal.flags.mouse_format = if (enabled) .urxvt else .x10,
++            .mouse_format_sgr_pixels => self.terminal.flags.mouse_format = if (enabled) .sgr_pixels else .x10,
 +            else => {},
 +        }
 +    }

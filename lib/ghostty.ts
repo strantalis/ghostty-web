@@ -12,11 +12,14 @@ import {
   DirtyState,
   GHOSTTY_CONFIG_SIZE,
   type GhosttyCell,
+  GhosttyResult,
   type GhosttyTerminalConfig,
   type GhosttyWasmExports,
   KeyEncoderOption,
   type KeyEvent,
   type KittyKeyFlags,
+  type MouseEncoderSize,
+  type MouseEventData,
   type RGB,
   type RenderStateColors,
   type RenderStateCursor,
@@ -31,6 +34,7 @@ export {
   type GhosttyCell,
   type GhosttyTerminalConfig,
   KeyEncoderOption,
+  GhosttyResult,
   type RGB,
   type RenderStateColors,
   type RenderStateCursor,
@@ -50,6 +54,10 @@ export class Ghostty {
 
   createKeyEncoder(): KeyEncoder {
     return new KeyEncoder(this.exports);
+  }
+
+  createMouseEncoder(): MouseEncoder {
+    return new MouseEncoder(this.exports);
   }
 
   createTerminal(
@@ -184,6 +192,10 @@ export class KeyEncoder {
     this.setOption(KeyEncoderOption.KITTY_KEYBOARD_FLAGS, flags);
   }
 
+  syncFromTerminal(handle: TerminalHandle): void {
+    this.exports.ghostty_key_encoder_setopt_from_terminal(this.encoder, handle);
+  }
+
   encode(event: KeyEvent): Uint8Array {
     const eventPtrPtr = this.exports.ghostty_wasm_alloc_opaque();
     const createResult = this.exports.ghostty_key_event_new(0, eventPtrPtr);
@@ -240,6 +252,145 @@ export class KeyEncoder {
       this.exports.ghostty_key_encoder_free(this.encoder);
       this.encoder = 0;
     }
+  }
+}
+
+export class MouseEncoder {
+  private static readonly SIZE_STRUCT_BYTES = 36;
+
+  private exports: GhosttyWasmExports;
+  private encoder: number = 0;
+  private event: number = 0;
+  private bufferPtr: number = 0;
+  private bufferSize: number = 128;
+  private writtenPtr: number = 0;
+
+  constructor(exports: GhosttyWasmExports) {
+    this.exports = exports;
+
+    const encoderPtrPtr = this.exports.ghostty_wasm_alloc_opaque();
+    const encoderResult = this.exports.ghostty_mouse_encoder_new(0, encoderPtrPtr);
+    if (encoderResult !== GhosttyResult.SUCCESS) {
+      throw new Error(`Failed to create mouse encoder: ${encoderResult}`);
+    }
+
+    const eventPtrPtr = this.exports.ghostty_wasm_alloc_opaque();
+    const eventResult = this.exports.ghostty_mouse_event_new(0, eventPtrPtr);
+    if (eventResult !== GhosttyResult.SUCCESS) {
+      this.exports.ghostty_wasm_free_opaque(encoderPtrPtr);
+      throw new Error(`Failed to create mouse event: ${eventResult}`);
+    }
+
+    const view = new DataView(this.exports.memory.buffer);
+    this.encoder = view.getUint32(encoderPtrPtr, true);
+    this.event = view.getUint32(eventPtrPtr, true);
+    this.exports.ghostty_wasm_free_opaque(encoderPtrPtr);
+    this.exports.ghostty_wasm_free_opaque(eventPtrPtr);
+
+    this.bufferPtr = this.exports.ghostty_wasm_alloc_u8_array(this.bufferSize);
+    this.writtenPtr = this.exports.ghostty_wasm_alloc_usize();
+  }
+
+  syncFromTerminal(handle: TerminalHandle): void {
+    this.exports.ghostty_mouse_encoder_setopt_from_terminal(this.encoder, handle);
+  }
+
+  reset(): void {
+    this.exports.ghostty_mouse_encoder_reset(this.encoder);
+  }
+
+  setSize(size: MouseEncoderSize): void {
+    const sizePtr = this.exports.ghostty_wasm_alloc_u8_array(MouseEncoder.SIZE_STRUCT_BYTES);
+    try {
+      const view = new DataView(this.exports.memory.buffer);
+      view.setUint32(sizePtr + 0, MouseEncoder.SIZE_STRUCT_BYTES, true);
+      view.setUint32(sizePtr + 4, Math.max(1, Math.round(size.screenWidth)), true);
+      view.setUint32(sizePtr + 8, Math.max(1, Math.round(size.screenHeight)), true);
+      view.setUint32(sizePtr + 12, Math.max(1, Math.round(size.cellWidth)), true);
+      view.setUint32(sizePtr + 16, Math.max(1, Math.round(size.cellHeight)), true);
+      view.setUint32(sizePtr + 20, Math.max(0, Math.round(size.paddingTop ?? 0)), true);
+      view.setUint32(sizePtr + 24, Math.max(0, Math.round(size.paddingBottom ?? 0)), true);
+      view.setUint32(sizePtr + 28, Math.max(0, Math.round(size.paddingRight ?? 0)), true);
+      view.setUint32(sizePtr + 32, Math.max(0, Math.round(size.paddingLeft ?? 0)), true);
+      this.exports.ghostty_mouse_encoder_setopt(this.encoder, 2, sizePtr);
+    } finally {
+      this.exports.ghostty_wasm_free_u8_array(sizePtr, MouseEncoder.SIZE_STRUCT_BYTES);
+    }
+  }
+
+  setAnyButtonPressed(value: boolean): void {
+    const ptr = this.exports.ghostty_wasm_alloc_u8();
+    try {
+      new Uint8Array(this.exports.memory.buffer)[ptr] = value ? 1 : 0;
+      this.exports.ghostty_mouse_encoder_setopt(this.encoder, 3, ptr);
+    } finally {
+      this.exports.ghostty_wasm_free_u8(ptr);
+    }
+  }
+
+  encode(event: MouseEventData): Uint8Array {
+    this.exports.ghostty_mouse_event_set_action(this.event, event.action);
+    if (event.button === undefined) {
+      this.exports.ghostty_mouse_event_clear_button(this.event);
+    } else {
+      this.exports.ghostty_mouse_event_set_button(this.event, event.button);
+    }
+    this.exports.ghostty_mouse_event_set_mods(this.event, event.mods);
+    this.exports.ghostty_mouse_event_set_position_xy(this.event, event.x, event.y);
+
+    let result = this.exports.ghostty_mouse_encoder_encode(
+      this.encoder,
+      this.event,
+      this.bufferPtr,
+      this.bufferSize,
+      this.writtenPtr
+    );
+
+    if (result === GhosttyResult.OUT_OF_SPACE) {
+      const neededSize = new DataView(this.exports.memory.buffer).getUint32(this.writtenPtr, true);
+      this.resizeBuffer(neededSize);
+      result = this.exports.ghostty_mouse_encoder_encode(
+        this.encoder,
+        this.event,
+        this.bufferPtr,
+        this.bufferSize,
+        this.writtenPtr
+      );
+    }
+
+    if (result !== GhosttyResult.SUCCESS) {
+      throw new Error(`Failed to encode mouse event: ${result}`);
+    }
+
+    const bytesWritten = new DataView(this.exports.memory.buffer).getUint32(this.writtenPtr, true);
+    return new Uint8Array(this.exports.memory.buffer, this.bufferPtr, bytesWritten).slice();
+  }
+
+  dispose(): void {
+    if (this.bufferPtr) {
+      this.exports.ghostty_wasm_free_u8_array(this.bufferPtr, this.bufferSize);
+      this.bufferPtr = 0;
+    }
+    if (this.writtenPtr) {
+      this.exports.ghostty_wasm_free_usize(this.writtenPtr);
+      this.writtenPtr = 0;
+    }
+    if (this.event) {
+      this.exports.ghostty_mouse_event_free(this.event);
+      this.event = 0;
+    }
+    if (this.encoder) {
+      this.exports.ghostty_mouse_encoder_free(this.encoder);
+      this.encoder = 0;
+    }
+  }
+
+  private resizeBuffer(nextSize: number): void {
+    if (this.bufferPtr) {
+      this.exports.ghostty_wasm_free_u8_array(this.bufferPtr, this.bufferSize);
+    }
+    this.bufferSize = Math.max(this.bufferSize * 2, nextSize);
+    this.bufferPtr = this.exports.ghostty_wasm_alloc_u8_array(this.bufferSize);
   }
 }
 
@@ -362,6 +513,14 @@ export class GhosttyTerminal {
       this.viewportBufferPtr = 0;
     }
     this.exports.ghostty_terminal_free_simple(this.handle);
+  }
+
+  syncKeyEncoder(encoder: KeyEncoder): void {
+    encoder.syncFromTerminal(this.handle);
+  }
+
+  syncMouseEncoder(encoder: MouseEncoder): void {
+    encoder.syncFromTerminal(this.handle);
   }
 
   // ==========================================================================
