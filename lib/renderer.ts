@@ -686,7 +686,7 @@ export class CanvasRenderer {
 
       // ▕ RIGHT 1/8 BLOCK
       case 0x2595:
-        ctx.fillRect(cellX + w * 7 / 8, cellY, w / 8, h);
+        ctx.fillRect(cellX + (w * 7) / 8, cellY, w / 8, h);
         return true;
 
       // ▖ QUADRANT LOWER LEFT

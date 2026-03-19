@@ -195,7 +195,7 @@ function drawSegments(
   up: Thick,
   down: Thick,
   left: Thick,
-  right: Thick,
+  right: Thick
 ): void {
   const cx = Math.round(cellX + w / 2);
   const cy = Math.round(cellY + h / 2);
@@ -256,7 +256,7 @@ function drawDoubleSegments(
   up: DThick,
   down: DThick,
   left: DThick,
-  right: DThick,
+  right: DThick
 ): void {
   const cx = Math.round(cellX + w / 2);
   const cy = Math.round(cellY + h / 2);
@@ -340,7 +340,7 @@ function drawDashedLine(
   h: number,
   horizontal: boolean,
   heavy: boolean,
-  dashCount: number,
+  dashCount: number
 ): void {
   const cx = Math.round(cellX + w / 2);
   const cy = Math.round(cellY + h / 2);
@@ -379,7 +379,7 @@ function drawRoundedCorner(
   cellY: number,
   w: number,
   h: number,
-  cp: number,
+  cp: number
 ): void {
   const cx = Math.round(cellX + w / 2);
   const cy = Math.round(cellY + h / 2);
@@ -423,7 +423,7 @@ function drawDiagonal(
   cellY: number,
   w: number,
   h: number,
-  cp: number,
+  cp: number
 ): void {
   const lt = Math.max(1, Math.round(w / 8));
 
@@ -459,7 +459,7 @@ export function renderBoxDrawing(
   cellX: number,
   cellY: number,
   cellWidth: number,
-  cellHeight: number,
+  cellHeight: number
 ): boolean {
   if (codepoint < 0x2500 || codepoint > 0x257f) return false;
 
@@ -473,24 +473,58 @@ export function renderBoxDrawing(
   // 2. Double/mixed line characters
   const dseg = DOUBLE_SEGMENTS[codepoint];
   if (dseg) {
-    drawDoubleSegments(ctx, cellX, cellY, cellWidth, cellHeight, dseg[0], dseg[1], dseg[2], dseg[3]);
+    drawDoubleSegments(
+      ctx,
+      cellX,
+      cellY,
+      cellWidth,
+      cellHeight,
+      dseg[0],
+      dseg[1],
+      dseg[2],
+      dseg[3]
+    );
     return true;
   }
 
   // 3. Dashed lines
   switch (codepoint) {
-    case 0x2504: drawDashedLine(ctx, cellX, cellY, cellWidth, cellHeight, true, false, 3); return true;  // ┄
-    case 0x2505: drawDashedLine(ctx, cellX, cellY, cellWidth, cellHeight, true, true, 3); return true;   // ┅
-    case 0x2506: drawDashedLine(ctx, cellX, cellY, cellWidth, cellHeight, false, false, 3); return true;  // ┆
-    case 0x2507: drawDashedLine(ctx, cellX, cellY, cellWidth, cellHeight, false, true, 3); return true;   // ┇
-    case 0x2508: drawDashedLine(ctx, cellX, cellY, cellWidth, cellHeight, true, false, 4); return true;   // ┈
-    case 0x2509: drawDashedLine(ctx, cellX, cellY, cellWidth, cellHeight, true, true, 4); return true;    // ┉
-    case 0x250a: drawDashedLine(ctx, cellX, cellY, cellWidth, cellHeight, false, false, 4); return true;  // ┊
-    case 0x250b: drawDashedLine(ctx, cellX, cellY, cellWidth, cellHeight, false, true, 4); return true;   // ┋
-    case 0x254c: drawDashedLine(ctx, cellX, cellY, cellWidth, cellHeight, true, false, 2); return true;   // ╌
-    case 0x254d: drawDashedLine(ctx, cellX, cellY, cellWidth, cellHeight, true, true, 2); return true;    // ╍
-    case 0x254e: drawDashedLine(ctx, cellX, cellY, cellWidth, cellHeight, false, false, 2); return true;  // ╎
-    case 0x254f: drawDashedLine(ctx, cellX, cellY, cellWidth, cellHeight, false, true, 2); return true;   // ╏
+    case 0x2504:
+      drawDashedLine(ctx, cellX, cellY, cellWidth, cellHeight, true, false, 3);
+      return true; // ┄
+    case 0x2505:
+      drawDashedLine(ctx, cellX, cellY, cellWidth, cellHeight, true, true, 3);
+      return true; // ┅
+    case 0x2506:
+      drawDashedLine(ctx, cellX, cellY, cellWidth, cellHeight, false, false, 3);
+      return true; // ┆
+    case 0x2507:
+      drawDashedLine(ctx, cellX, cellY, cellWidth, cellHeight, false, true, 3);
+      return true; // ┇
+    case 0x2508:
+      drawDashedLine(ctx, cellX, cellY, cellWidth, cellHeight, true, false, 4);
+      return true; // ┈
+    case 0x2509:
+      drawDashedLine(ctx, cellX, cellY, cellWidth, cellHeight, true, true, 4);
+      return true; // ┉
+    case 0x250a:
+      drawDashedLine(ctx, cellX, cellY, cellWidth, cellHeight, false, false, 4);
+      return true; // ┊
+    case 0x250b:
+      drawDashedLine(ctx, cellX, cellY, cellWidth, cellHeight, false, true, 4);
+      return true; // ┋
+    case 0x254c:
+      drawDashedLine(ctx, cellX, cellY, cellWidth, cellHeight, true, false, 2);
+      return true; // ╌
+    case 0x254d:
+      drawDashedLine(ctx, cellX, cellY, cellWidth, cellHeight, true, true, 2);
+      return true; // ╍
+    case 0x254e:
+      drawDashedLine(ctx, cellX, cellY, cellWidth, cellHeight, false, false, 2);
+      return true; // ╎
+    case 0x254f:
+      drawDashedLine(ctx, cellX, cellY, cellWidth, cellHeight, false, true, 2);
+      return true; // ╏
   }
 
   // 4. Rounded corners

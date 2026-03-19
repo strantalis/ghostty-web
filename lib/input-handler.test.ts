@@ -1194,11 +1194,7 @@ describe('InputHandler', () => {
   });
 
   describe('processWheel', () => {
-    function createWheelEvent(
-      deltaY: number,
-      clientX: number,
-      clientY: number
-    ): WheelEvent {
+    function createWheelEvent(deltaY: number, clientX: number, clientY: number): WheelEvent {
       return {
         deltaY,
         clientX,
@@ -1224,7 +1220,9 @@ describe('InputHandler', () => {
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
-        () => { bellCalled = true; },
+        () => {
+          bellCalled = true;
+        },
         undefined,
         undefined,
         undefined,
@@ -1250,7 +1248,9 @@ describe('InputHandler', () => {
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
-        () => { bellCalled = true; },
+        () => {
+          bellCalled = true;
+        },
         undefined,
         undefined,
         undefined,
@@ -1280,7 +1280,9 @@ describe('InputHandler', () => {
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
-        () => { bellCalled = true; },
+        () => {
+          bellCalled = true;
+        },
         undefined,
         undefined,
         undefined,
@@ -1310,7 +1312,9 @@ describe('InputHandler', () => {
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
-        () => { bellCalled = true; },
+        () => {
+          bellCalled = true;
+        },
         undefined,
         undefined,
         undefined,

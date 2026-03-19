@@ -320,7 +320,7 @@ export class GhosttyTerminal {
         this.exports.ghostty_wasm_free_u8_array(configPtr, GHOSTTY_CONFIG_SIZE);
       }
     } else {
-      this.handle = this.exports.ghostty_terminal_new(cols, rows);
+      this.handle = this.exports.ghostty_terminal_new_simple(cols, rows);
     }
 
     if (!this.handle) throw new Error('Failed to create terminal');
@@ -351,7 +351,7 @@ export class GhosttyTerminal {
     if (cols === this._cols && rows === this._rows) return;
     this._cols = cols;
     this._rows = rows;
-    this.exports.ghostty_terminal_resize(this.handle, cols, rows);
+    this.exports.ghostty_terminal_resize_simple(this.handle, cols, rows);
     this.invalidateBuffers();
     this.initCellPool();
   }
@@ -361,7 +361,7 @@ export class GhosttyTerminal {
       this.exports.ghostty_wasm_free_u8_array(this.viewportBufferPtr, this.viewportBufferSize);
       this.viewportBufferPtr = 0;
     }
-    this.exports.ghostty_terminal_free(this.handle);
+    this.exports.ghostty_terminal_free_simple(this.handle);
   }
 
   // ==========================================================================
@@ -425,7 +425,7 @@ export class GhosttyTerminal {
         const c = this.exports.ghostty_render_state_get_cursor_color(this.handle);
         if (c === 0) return null;
         return { r: (c >> 16) & 0xff, g: (c >> 8) & 0xff, b: c & 0xff };
-      })()
+      })(),
     };
   }
 

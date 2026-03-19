@@ -408,10 +408,10 @@ export interface GhosttyWasmExports extends WebAssembly.Exports {
   ghostty_key_event_set_utf8(event: number, ptr: number, len: number): void;
 
   // Terminal lifecycle
-  ghostty_terminal_new(cols: number, rows: number): TerminalHandle;
+  ghostty_terminal_new_simple(cols: number, rows: number): TerminalHandle;
   ghostty_terminal_new_with_config(cols: number, rows: number, configPtr: number): TerminalHandle;
-  ghostty_terminal_free(terminal: TerminalHandle): void;
-  ghostty_terminal_resize(terminal: TerminalHandle, cols: number, rows: number): void;
+  ghostty_terminal_free_simple(terminal: TerminalHandle): void;
+  ghostty_terminal_resize_simple(terminal: TerminalHandle, cols: number, rows: number): void;
   ghostty_terminal_write(terminal: TerminalHandle, dataPtr: number, dataLen: number): void;
 
   // RenderState API - high-performance rendering (ONE call gets ALL data)
