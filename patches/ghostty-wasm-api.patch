@@ -29,10 +29,10 @@ index 4f8fef88e..ca9fb1d4d 100644
  #include <ghostty/vt/key.h>
 diff --git a/include/ghostty/vt/terminal.h b/include/ghostty/vt/terminal.h
 new file mode 100644
-index 000000000..c467102c3
+index 000000000..567112d8d
 --- /dev/null
 +++ b/include/ghostty/vt/terminal.h
-@@ -0,0 +1,285 @@
+@@ -0,0 +1,288 @@
 +/**
 + * @file terminal.h
 + *
@@ -161,6 +161,9 @@ index 000000000..c467102c3
 +/** Get default colors as 0xRRGGBB */
 +uint32_t ghostty_render_state_get_bg_color(GhosttyTerminal term);
 +uint32_t ghostty_render_state_get_fg_color(GhosttyTerminal term);
++
++/** Get cursor color as 0xRRGGBB, or 0 if using default */
++uint32_t ghostty_render_state_get_cursor_color(GhosttyTerminal term);
 +
 +/** Check if a row is dirty */
 +bool ghostty_render_state_is_row_dirty(GhosttyTerminal term, int y);
@@ -319,10 +322,10 @@ index 000000000..c467102c3
 +
 +#endif /* GHOSTTY_VT_TERMINAL_H */
 diff --git a/src/lib_vt.zig b/src/lib_vt.zig
-index 03a883e20..1336676d7 100644
+index 03a883e20..47375549a 100644
 --- a/src/lib_vt.zig
 +++ b/src/lib_vt.zig
-@@ -140,6 +140,45 @@ comptime {
+@@ -140,6 +140,46 @@ comptime {
          @export(&c.sgr_unknown_partial, .{ .name = "ghostty_sgr_unknown_partial" });
          @export(&c.sgr_attribute_tag, .{ .name = "ghostty_sgr_attribute_tag" });
          @export(&c.sgr_attribute_value, .{ .name = "ghostty_sgr_attribute_value" });
@@ -342,6 +345,7 @@ index 03a883e20..1336676d7 100644
 +        @export(&c.render_state_get_cursor_visible, .{ .name = "ghostty_render_state_get_cursor_visible" });
 +        @export(&c.render_state_get_bg_color, .{ .name = "ghostty_render_state_get_bg_color" });
 +        @export(&c.render_state_get_fg_color, .{ .name = "ghostty_render_state_get_fg_color" });
++        @export(&c.render_state_get_cursor_color, .{ .name = "ghostty_render_state_get_cursor_color" });
 +        @export(&c.render_state_is_row_dirty, .{ .name = "ghostty_render_state_is_row_dirty" });
 +        @export(&c.render_state_mark_clean, .{ .name = "ghostty_render_state_mark_clean" });
 +        @export(&c.render_state_get_viewport, .{ .name = "ghostty_render_state_get_viewport" });
@@ -369,7 +373,7 @@ index 03a883e20..1336676d7 100644
          // On Wasm we need to export our allocator convenience functions.
          if (builtin.target.cpu.arch.isWasm()) {
 diff --git a/src/terminal/c/main.zig b/src/terminal/c/main.zig
-index bc92597f5..d0ee49c1b 100644
+index bc92597f5..a63730c9e 100644
 --- a/src/terminal/c/main.zig
 +++ b/src/terminal/c/main.zig
 @@ -4,6 +4,7 @@ pub const key_event = @import("key_event.zig");
@@ -380,7 +384,7 @@ index bc92597f5..d0ee49c1b 100644
  
  // The full C API, unexported.
  pub const osc_new = osc.new;
-@@ -52,6 +53,46 @@ pub const key_encoder_encode = key_encode.encode;
+@@ -52,6 +53,47 @@ pub const key_encoder_encode = key_encode.encode;
  
  pub const paste_is_safe = paste.is_safe;
  
@@ -400,6 +404,7 @@ index bc92597f5..d0ee49c1b 100644
 +pub const render_state_get_cursor_visible = terminal.renderStateGetCursorVisible;
 +pub const render_state_get_bg_color = terminal.renderStateGetBgColor;
 +pub const render_state_get_fg_color = terminal.renderStateGetFgColor;
++pub const render_state_get_cursor_color = terminal.renderStateGetCursorColor;
 +pub const render_state_is_row_dirty = terminal.renderStateIsRowDirty;
 +pub const render_state_mark_clean = terminal.renderStateMarkClean;
 +pub const render_state_get_viewport = terminal.renderStateGetViewport;
@@ -427,7 +432,7 @@ index bc92597f5..d0ee49c1b 100644
  test {
      _ = color;
      _ = osc;
-@@ -59,6 +100,7 @@ test {
+@@ -59,6 +101,7 @@ test {
      _ = key_encode;
      _ = paste;
      _ = sgr;
@@ -437,10 +442,10 @@ index bc92597f5..d0ee49c1b 100644
      _ = @import("../../lib/allocator.zig");
 diff --git a/src/terminal/c/terminal.zig b/src/terminal/c/terminal.zig
 new file mode 100644
-index 000000000..73ae2e6fa
+index 000000000..2e7cdc576
 --- /dev/null
 +++ b/src/terminal/c/terminal.zig
-@@ -0,0 +1,1123 @@
+@@ -0,0 +1,1227 @@
 +//! C API wrapper for Terminal
 +//!
 +//! This provides a minimal, high-performance interface to Ghostty's Terminal
@@ -467,6 +472,8 @@ index 000000000..73ae2e6fa
 +const render = @import("../render.zig");
 +const RenderState = render.RenderState;
 +const color = @import("../color.zig");
++const osc_color = @import("../osc/color.zig");
++const kitty_color = @import("../kitty/color.zig");
 +const modespkg = @import("../modes.zig");
 +const point = @import("../point.zig");
 +const Style = @import("../style.zig").Style;
@@ -739,17 +746,111 @@ index 000000000..73ae2e6fa
 +        }
 +    }
 +
-+    fn colorOperation(self: *ResponseHandler, op: anytype, requests: anytype) !void {
-+        _ = self;
++    fn colorOperation(
++        self: *ResponseHandler,
++        op: osc_color.Operation,
++        requests: *const osc_color.List,
++    ) !void {
 +        _ = op;
-+        _ = requests;
-+        // Color operations are not supported in WASM context
++        if (requests.count() == 0) return;
++
++        var it = requests.constIterator(0);
++        while (it.next()) |req| {
++            switch (req.*) {
++                .set => |set| {
++                    switch (set.target) {
++                        .palette => |i| {
++                            self.terminal.flags.dirty.palette = true;
++                            self.terminal.colors.palette.set(i, set.color);
++                        },
++                        .dynamic => |dynamic| switch (dynamic) {
++                            .foreground => self.terminal.colors.foreground.set(set.color),
++                            .background => self.terminal.colors.background.set(set.color),
++                            .cursor => self.terminal.colors.cursor.set(set.color),
++                            .pointer_foreground,
++                            .pointer_background,
++                            .tektronix_foreground,
++                            .tektronix_background,
++                            .highlight_background,
++                            .tektronix_cursor,
++                            .highlight_foreground,
++                            => {},
++                        },
++                        .special => {},
++                    }
++                },
++
++                .reset => |target| switch (target) {
++                    .palette => |i| {
++                        self.terminal.flags.dirty.palette = true;
++                        self.terminal.colors.palette.reset(i);
++                    },
++                    .dynamic => |dynamic| switch (dynamic) {
++                        .foreground => self.terminal.colors.foreground.reset(),
++                        .background => self.terminal.colors.background.reset(),
++                        .cursor => self.terminal.colors.cursor.reset(),
++                        .pointer_foreground,
++                        .pointer_background,
++                        .tektronix_foreground,
++                        .tektronix_background,
++                        .highlight_background,
++                        .tektronix_cursor,
++                        .highlight_foreground,
++                        => {},
++                    },
++                    .special => {},
++                },
++
++                .reset_palette => {
++                    const mask = &self.terminal.colors.palette.mask;
++                    var mask_it = mask.iterator(.{});
++                    while (mask_it.next()) |i| {
++                        self.terminal.flags.dirty.palette = true;
++                        self.terminal.colors.palette.reset(@intCast(i));
++                    }
++                    mask.* = .initEmpty();
++                },
++
++                .query,
++                .reset_special,
++                => {},
++            }
++        }
 +    }
 +
-+    fn kittyColorOperation(self: *ResponseHandler, value: anytype) !void {
-+        _ = self;
-+        _ = value;
-+        // Kitty color operations are not supported in WASM context
++    fn kittyColorOperation(
++        self: *ResponseHandler,
++        request: kitty_color.OSC,
++    ) !void {
++        for (request.list.items) |item| {
++            switch (item) {
++                .set => |v| switch (v.key) {
++                    .palette => |palette| {
++                        self.terminal.flags.dirty.palette = true;
++                        self.terminal.colors.palette.set(palette, v.color);
++                    },
++                    .special => |special| switch (special) {
++                        .foreground => self.terminal.colors.foreground.set(v.color),
++                        .background => self.terminal.colors.background.set(v.color),
++                        .cursor => self.terminal.colors.cursor.set(v.color),
++                        else => {},
++                    },
++                },
++                .reset => |key| switch (key) {
++                    .palette => |palette| {
++                        self.terminal.flags.dirty.palette = true;
++                        self.terminal.colors.palette.reset(palette);
++                    },
++                    .special => |special| switch (special) {
++                        .foreground => self.terminal.colors.foreground.reset(),
++                        .background => self.terminal.colors.background.reset(),
++                        .cursor => self.terminal.colors.cursor.reset(),
++                        else => {},
++                    },
++                },
++                .query => {},
++            }
++        }
 +    }
 +};
 +
@@ -883,8 +984,9 @@ index 000000000..73ae2e6fa
 +    // Initialize handler with references to terminal and response buffer
 +    wrapper.handler = ResponseHandler.init(alloc, &wrapper.terminal, &wrapper.response_buffer);
 +
-+    // Initialize stream with the handler
-+    wrapper.stream = ResponseStream.init(wrapper.handler);
++    // Initialize stream with the handler (initAlloc passes the allocator to the
++    // OSC parser so it can handle color-related OSC commands like 4, 10-19, 104, 112)
++    wrapper.stream = ResponseStream.initAlloc(alloc, wrapper.handler);
 +
 +    wrapper.* = .{
 +        .alloc = alloc,
@@ -1003,6 +1105,13 @@ index 000000000..73ae2e6fa
 +    const wrapper: *const TerminalWrapper = @ptrCast(@alignCast(ptr orelse return 0xCCCCCC));
 +    const fg = wrapper.render_state.colors.foreground;
 +    return (@as(u32, fg.r) << 16) | (@as(u32, fg.g) << 8) | fg.b;
++}
++
++/// Get cursor color as 0xRRGGBB, or 0 if using default
++pub fn renderStateGetCursorColor(ptr: ?*anyopaque) callconv(.c) u32 {
++    const wrapper: *const TerminalWrapper = @ptrCast(@alignCast(ptr orelse return 0));
++    const cursor = wrapper.render_state.colors.cursor orelse return 0;
++    return (@as(u32, cursor.r) << 16) | (@as(u32, cursor.g) << 8) | cursor.b;
 +}
 +
 +/// Check if row is dirty

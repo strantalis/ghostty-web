@@ -421,8 +421,24 @@ export class GhosttyTerminal {
         g: (fg >> 8) & 0xff,
         b: fg & 0xff,
       },
-      cursor: null, // TODO: Add cursor color support
+      cursor: (() => {
+        const c = this.exports.ghostty_render_state_get_cursor_color(this.handle);
+        if (c === 0) return null;
+        return { r: (c >> 16) & 0xff, g: (c >> 8) & 0xff, b: c & 0xff };
+      })()
     };
+  }
+
+  /**
+   * Get dynamic cursor color set by OSC 12, or null for theme default.
+   */
+  getDynamicCursorColor(): string | null {
+    const c = this.exports.ghostty_render_state_get_cursor_color(this.handle);
+    if (c === 0) return null;
+    const r = (c >> 16) & 0xff;
+    const g = (c >> 8) & 0xff;
+    const b = c & 0xff;
+    return `rgb(${r},${g},${b})`;
   }
 
   /**

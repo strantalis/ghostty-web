@@ -31,6 +31,8 @@ export interface IRenderable {
    * For simple cells, returns the single character.
    */
   getGraphemeString?(row: number, col: number): string;
+  /** Get dynamic cursor color set by OSC 12, or null for theme default */
+  getDynamicCursorColor?(): string | null;
 }
 
 export interface IScrollbackProvider {
@@ -486,7 +488,8 @@ export class CanvasRenderer {
 
     // Render cursor (only if we're at the bottom, not scrolled)
     if (viewportY === 0 && cursor.visible && this.cursorVisible) {
-      this.renderCursor(cursor.x, cursor.y);
+      const dynamicCursorColor = buffer.getDynamicCursorColor?.() ?? null;
+      this.renderCursor(cursor.x, cursor.y, dynamicCursorColor);
     }
 
     // Render scrollbar if scrolled or scrollback exists (with opacity for fade effect)
@@ -897,11 +900,11 @@ export class CanvasRenderer {
   /**
    * Render cursor
    */
-  private renderCursor(x: number, y: number): void {
+  private renderCursor(x: number, y: number, dynamicColor?: string | null): void {
     const cursorX = x * this.metrics.width;
     const cursorY = y * this.metrics.height;
 
-    this.ctx.fillStyle = this.theme.cursor;
+    this.ctx.fillStyle = dynamicColor ?? this.theme.cursor;
 
     switch (this.cursorStyle) {
       case 'block':

@@ -423,6 +423,7 @@ export interface GhosttyWasmExports extends WebAssembly.Exports {
   ghostty_render_state_get_cursor_visible(terminal: TerminalHandle): boolean;
   ghostty_render_state_get_bg_color(terminal: TerminalHandle): number; // 0xRRGGBB
   ghostty_render_state_get_fg_color(terminal: TerminalHandle): number; // 0xRRGGBB
+  ghostty_render_state_get_cursor_color(terminal: TerminalHandle): number; // 0xRRGGBB, 0 = default
   ghostty_render_state_is_row_dirty(terminal: TerminalHandle, row: number): boolean;
   ghostty_render_state_mark_clean(terminal: TerminalHandle): void;
   ghostty_render_state_get_viewport(
