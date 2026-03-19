@@ -402,6 +402,43 @@ export class InputHandler {
   }
 
   /**
+   * Encode pure Ctrl+printable chords to canonical ASCII control characters.
+   * We intentionally bypass the encoder here because some terminal apps enable
+   * enhanced keyboard reporting but still expect classic control bytes for
+   * interrupt/EOF/suspend handling.
+   */
+  private getCtrlChordOutput(event: KeyboardEvent): string | null {
+    if (!event.ctrlKey || event.altKey || event.metaKey || event.key.length !== 1) {
+      return null;
+    }
+
+    const key = event.key.toUpperCase();
+
+    if (key >= 'A' && key <= 'Z') {
+      return String.fromCharCode(key.charCodeAt(0) - 64);
+    }
+
+    switch (key) {
+      case '@':
+      case ' ':
+        return '\x00';
+      case '[':
+        return '\x1B';
+      case '\\':
+        return '\x1C';
+      case ']':
+        return '\x1D';
+      case '^':
+        return '\x1E';
+      case '_':
+      case '/':
+        return '\x1F';
+      default:
+        return null;
+    }
+  }
+
+  /**
    * Handle keydown event
    * @param event - KeyboardEvent
    */
@@ -444,6 +481,18 @@ export class InputHandler {
       if (this.onCopyCallback && this.onCopyCallback()) {
         event.preventDefault();
       }
+      return;
+    }
+
+    const ctrlChordOutput = this.getCtrlChordOutput(event);
+    if (ctrlChordOutput !== null) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.onDataCallback(ctrlChordOutput);
+      this.recordKeyDownData(ctrlChordOutput, {
+        beforeInputText: event.key,
+        suppressPrintableBeforeInput: true,
+      });
       return;
     }
 

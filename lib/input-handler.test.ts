@@ -624,6 +624,40 @@ describe('InputHandler', () => {
       expect(dataReceived[0].charCodeAt(0)).toBe(0x03);
       expect(beforeInputEvent.preventDefault).toHaveBeenCalled();
     });
+
+    test('prefers canonical Ctrl+C over encoder output', () => {
+      const handler = new InputHandler(
+        ghostty,
+        container as any,
+        (data) => dataReceived.push(data),
+        () => {
+          _bellCalled = true;
+        }
+      );
+
+      const encodeSpy = mock((_event: unknown) => new Uint8Array([99]));
+      (handler as any).encoder.encode = encodeSpy;
+
+      simulateKey(container, createKeyEvent('KeyC', 'c', { ctrl: true }));
+
+      expect(dataReceived).toEqual(['\x03']);
+      expect(encodeSpy).not.toHaveBeenCalled();
+    });
+
+    test('encodes Ctrl+[ as escape', () => {
+      const _handler = new InputHandler(
+        ghostty,
+        container as any,
+        (data) => dataReceived.push(data),
+        () => {
+          _bellCalled = true;
+        }
+      );
+
+      simulateKey(container, createKeyEvent('BracketLeft', '[', { ctrl: true }));
+
+      expect(dataReceived).toEqual(['\x1b']);
+    });
   });
 
   describe('Special Keys', () => {
