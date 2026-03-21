@@ -1813,6 +1813,46 @@ describe('Alternate Screen Rendering', () => {
     term.dispose();
   });
 
+  test('BUG REPRO: steady blink frame should not refresh render state multiple times', async () => {
+    const term = await createIsolatedTerminal({
+      cols: 80,
+      rows: 24,
+      cursorBlink: true,
+      cursorStyle: 'bar',
+    });
+    const container = document.createElement('div');
+    term.open(container);
+
+    // Stop the async render loop so we can measure one manual frame precisely.
+    (term as any).cancelRenderLoop();
+
+    term.write('\x1b[?1049h');
+    term.write('\x1b[12;30HWelcome to Codex');
+    term.renderer!.render(term.wasmTerm!, false, term.viewportY, term, 1);
+
+    // Move the cursor across rows to match the live-TUI failure shape.
+    term.write('\r\nNEXT');
+    term.renderer!.render(term.wasmTerm!, false, term.viewportY, term, 1);
+
+    const wasm = term.wasmTerm!;
+    const originalUpdate = wasm.update.bind(wasm);
+    let updateCalls = 0;
+    wasm.update = (() => {
+      updateCalls++;
+      return originalUpdate();
+    }) as typeof wasm.update;
+
+    try {
+      term.renderer!.render(wasm, false, term.viewportY, term, 1);
+    } finally {
+      wasm.update = originalUpdate;
+    }
+
+    expect(updateCalls).toBeLessThanOrEqual(1);
+
+    term.dispose();
+  });
+
   test('can enter alternate screen and write content', async () => {
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
     const container = document.createElement('div');

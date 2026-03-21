@@ -7,7 +7,33 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { DEFAULT_THEME } from './renderer';
+import {
+  CanvasRenderer,
+  DEFAULT_THEME,
+  type IRenderable,
+  type IScrollbackProvider,
+} from './renderer';
+import type { GhosttyCell } from './types';
+
+function makeCell(char: string): GhosttyCell {
+  return {
+    codepoint: char.codePointAt(0) ?? 32,
+    fg_r: 204,
+    fg_g: 204,
+    fg_b: 204,
+    bg_r: 0,
+    bg_g: 0,
+    bg_b: 0,
+    flags: 0,
+    width: 1,
+    hyperlink_id: 0,
+    grapheme_len: 0,
+  };
+}
+
+function makeLine(label: string, cols: number): GhosttyCell[] {
+  return Array.from({ length: cols }, (_, index) => makeCell(label[index] ?? ' '));
+}
 
 describe('CanvasRenderer', () => {
   describe('Default Theme', () => {
@@ -59,6 +85,50 @@ describe('CanvasRenderer', () => {
       expect(DEFAULT_THEME.foreground).toMatch(hexPattern);
       expect(DEFAULT_THEME.background).toMatch(hexPattern);
       expect(DEFAULT_THEME.cursor).toMatch(hexPattern);
+    });
+  });
+
+  describe('Viewport Mapping', () => {
+    test('fractional viewportY should use floor(viewportY) consistently for row mapping', () => {
+      const canvas = document.createElement('canvas');
+      const renderer = new CanvasRenderer(canvas, { devicePixelRatio: 1 });
+
+      const screenRows: number[] = [];
+      const scrollbackOffsets: number[] = [];
+
+      const buffer: IRenderable = {
+        getLine(y: number): GhosttyCell[] | null {
+          screenRows.push(y);
+          return makeLine(`S${y}`, 4);
+        },
+        getCursor() {
+          return { x: 0, y: 0, visible: false };
+        },
+        getDimensions() {
+          return { cols: 4, rows: 4 };
+        },
+        isRowDirty(): boolean {
+          return false;
+        },
+        clearDirty(): void {},
+      };
+
+      const scrollbackProvider: IScrollbackProvider = {
+        getScrollbackLine(offset: number): GhosttyCell[] | null {
+          scrollbackOffsets.push(offset);
+          return makeLine(`B${offset}`, 4);
+        },
+        getScrollbackLength(): number {
+          return 5;
+        },
+      };
+
+      renderer.render(buffer, true, 1.7, scrollbackProvider, 1);
+
+      expect(scrollbackOffsets).toEqual([4]);
+      expect(screenRows).toEqual([0, 1, 2]);
+
+      renderer.dispose();
     });
   });
 });

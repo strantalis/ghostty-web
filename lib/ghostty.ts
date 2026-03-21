@@ -418,6 +418,7 @@ export class GhosttyTerminal {
 
   /** Cell pool for zero-allocation rendering */
   private cellPool: GhosttyCell[] = [];
+  private lastDirtyState: DirtyState = DirtyState.NONE;
 
   constructor(
     exports: GhosttyWasmExports,
@@ -541,7 +542,15 @@ export class GhosttyTerminal {
    * Safe to call multiple times - dirty state persists until markClean().
    */
   update(): DirtyState {
-    return this.exports.ghostty_render_state_update(this.handle) as DirtyState;
+    this.lastDirtyState = this.exports.ghostty_render_state_update(this.handle) as DirtyState;
+    return this.lastDirtyState;
+  }
+
+  /**
+   * Refresh render state once at the start of a render frame.
+   */
+  prepareRenderState(): void {
+    this.update();
   }
 
   /**
@@ -552,6 +561,14 @@ export class GhosttyTerminal {
     // Call update() to ensure render state is fresh.
     // This is safe to call multiple times - dirty state persists until markClean().
     this.update();
+    return this.getCursorFromRenderState();
+  }
+
+  /**
+   * Get cursor state from the most recently refreshed render state.
+   * Call update() first to guarantee freshness.
+   */
+  getCursorFromRenderState(): RenderStateCursor {
     return {
       x: this.exports.ghostty_render_state_get_cursor_x(this.handle),
       y: this.exports.ghostty_render_state_get_cursor_y(this.handle),
@@ -567,6 +584,7 @@ export class GhosttyTerminal {
    * Get default colors from render state
    */
   getColors(): RenderStateColors {
+    this.update();
     const bg = this.exports.ghostty_render_state_get_bg_color(this.handle);
     const fg = this.exports.ghostty_render_state_get_fg_color(this.handle);
     return {
@@ -619,6 +637,15 @@ export class GhosttyTerminal {
    * Returns a reusable cell array (zero allocation after warmup).
    */
   getViewport(): GhosttyCell[] {
+    this.update();
+    return this.getViewportFromRenderState();
+  }
+
+  /**
+   * Get all viewport cells from the most recently refreshed render state.
+   * Call update() first to guarantee freshness.
+   */
+  getViewportFromRenderState(): GhosttyCell[] {
     const totalCells = this._cols * this._rows;
     const neededSize = totalCells * GhosttyTerminal.CELL_SIZE;
 
@@ -659,7 +686,16 @@ export class GhosttyTerminal {
     // Call update() to ensure render state is fresh.
     // This is safe to call multiple times - dirty state persists until markClean().
     this.update();
-    const viewport = this.getViewport();
+    return this.getLineFromRenderState(y);
+  }
+
+  /**
+   * Get line data from the most recently refreshed render state.
+   * Call update() first to guarantee freshness.
+   */
+  getLineFromRenderState(y: number): GhosttyCell[] | null {
+    if (y < 0 || y >= this._rows) return null;
+    const viewport = this.getViewportFromRenderState();
     const start = y * this._cols;
     // Return deep copies to avoid cell pool reference issues
     return viewport.slice(start, start + this._cols).map((cell) => ({ ...cell }));
@@ -676,6 +712,13 @@ export class GhosttyTerminal {
    */
   needsFullRedraw(): boolean {
     return this.update() === DirtyState.FULL;
+  }
+
+  /**
+   * Check if the last render-state refresh requested a full redraw.
+   */
+  needsFullRedrawFromRenderState(): boolean {
+    return this.lastDirtyState === DirtyState.FULL;
   }
 
   /** Mark render state as clean after rendering */
@@ -725,6 +768,17 @@ export class GhosttyTerminal {
    * @param offset 0 = oldest line, (length-1) = most recent scrollback line
    */
   getScrollbackLine(offset: number): GhosttyCell[] | null {
+    // Call update() to ensure render state is fresh (needed for colors).
+    // This is safe to call multiple times - dirty state persists until markClean().
+    this.update();
+    return this.getScrollbackLineFromRenderState(offset);
+  }
+
+  /**
+   * Get a scrollback line without refreshing render state again.
+   * Call update() first to guarantee freshness.
+   */
+  getScrollbackLineFromRenderState(offset: number): GhosttyCell[] | null {
     const neededSize = this._cols * GhosttyTerminal.CELL_SIZE;
 
     // Ensure buffer is allocated
@@ -735,10 +789,6 @@ export class GhosttyTerminal {
       this.viewportBufferPtr = this.exports.ghostty_wasm_alloc_u8_array(neededSize);
       this.viewportBufferSize = neededSize;
     }
-
-    // Call update() to ensure render state is fresh (needed for colors).
-    // This is safe to call multiple times - dirty state persists until markClean().
-    this.update();
 
     const count = this.exports.ghostty_terminal_get_scrollback_line(
       this.handle,
@@ -975,6 +1025,15 @@ export class GhosttyTerminal {
    * @returns Array of codepoints, or null on error
    */
   getGrapheme(row: number, col: number): number[] | null {
+    this.update();
+    return this.getGraphemeFromRenderState(row, col);
+  }
+
+  /**
+   * Get all codepoints for a grapheme cluster from the most recently refreshed render state.
+   * Call update() first to guarantee freshness.
+   */
+  getGraphemeFromRenderState(row: number, col: number): number[] | null {
     // Allocate buffer on first use (16 codepoints should be enough for any grapheme)
     if (!this.graphemeBuffer) {
       this.graphemeBufferPtr = this.exports.ghostty_wasm_alloc_u8_array(16 * 4);
@@ -1002,6 +1061,16 @@ export class GhosttyTerminal {
    */
   getGraphemeString(row: number, col: number): string {
     const codepoints = this.getGrapheme(row, col);
+    if (!codepoints || codepoints.length === 0) return ' ';
+    return String.fromCodePoint(...codepoints);
+  }
+
+  /**
+   * Get a grapheme string from the most recently refreshed render state.
+   * Call update() first to guarantee freshness.
+   */
+  getGraphemeStringFromRenderState(row: number, col: number): string {
+    const codepoints = this.getGraphemeFromRenderState(row, col);
     if (!codepoints || codepoints.length === 0) return ' ';
     return String.fromCodePoint(...codepoints);
   }

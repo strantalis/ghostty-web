@@ -950,6 +950,8 @@ export class Terminal implements ITerminalCore {
    * Scroll viewport to the bottom (current output)
    */
   public scrollToBottom(): void {
+    this.cancelSmoothScrollAnimation();
+    this.targetViewportY = 0;
     if (this.viewportY !== 0) {
       this.viewportY = 0;
       this.scrollEmitter.fire(this.viewportY);
@@ -1072,6 +1074,14 @@ export class Terminal implements ITerminalCore {
     this.scrollAnimationFrame = requestAnimationFrame(this.animateScroll);
   };
 
+  private cancelSmoothScrollAnimation(): void {
+    if (this.scrollAnimationFrame) {
+      cancelAnimationFrame(this.scrollAnimationFrame);
+      this.scrollAnimationFrame = undefined;
+    }
+    this.scrollAnimationStartTime = undefined;
+  }
+
   // ==========================================================================
   // Lifecycle
   // ==========================================================================
@@ -1093,8 +1103,7 @@ export class Terminal implements ITerminalCore {
 
     // Stop smooth scroll animation
     if (this.scrollAnimationFrame) {
-      cancelAnimationFrame(this.scrollAnimationFrame);
-      this.scrollAnimationFrame = undefined;
+      this.cancelSmoothScrollAnimation();
     }
 
     // Clear mouse move throttle timeout
@@ -1165,7 +1174,7 @@ export class Terminal implements ITerminalCore {
 
         // Check for cursor movement (Phase 2: onCursorMove event)
         // Note: getCursor() reads from already-updated render state (from render() above)
-        const cursor = this.wasmTerm!.getCursor();
+        const cursor = this.wasmTerm!.getCursorFromRenderState?.() ?? this.wasmTerm!.getCursor();
         if (cursor.y !== this.lastCursorY) {
           this.lastCursorY = cursor.y;
           this.cursorMoveEmitter.fire();
@@ -1188,6 +1197,11 @@ export class Terminal implements ITerminalCore {
   public getScrollbackLine(offset: number): GhosttyCell[] | null {
     if (!this.wasmTerm) return null;
     return this.wasmTerm.getScrollbackLine(offset);
+  }
+
+  public getScrollbackLineFromRenderState(offset: number): GhosttyCell[] | null {
+    if (!this.wasmTerm) return null;
+    return this.wasmTerm.getScrollbackLineFromRenderState(offset);
   }
 
   /**

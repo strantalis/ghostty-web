@@ -679,4 +679,28 @@ describe('Custom Wheel Event Handler', () => {
     // Should have scrolled up
     expect((term as any).viewportY).toBeGreaterThan(0);
   });
+
+  test('write() should cancel in-flight smooth scrolling and stay pinned to bottom', async () => {
+    for (let i = 0; i < 120; i++) {
+      term.write(`Line ${i}\r\n`);
+    }
+
+    const wheelEvent = new WheelEvent('wheel', {
+      deltaY: -240,
+      deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+      bubbles: true,
+      cancelable: true,
+    });
+    container.dispatchEvent(wheelEvent);
+
+    expect((term as any).viewportY).toBeGreaterThan(0);
+
+    term.write('NEW OUTPUT\r\n');
+
+    expect((term as any).viewportY).toBe(0);
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    expect((term as any).viewportY).toBe(0);
+  });
 });
