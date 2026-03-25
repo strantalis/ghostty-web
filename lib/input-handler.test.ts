@@ -174,6 +174,21 @@ function simulateKey(
   }
 }
 
+function setNavigatorPlatformForTest(platform: string): () => void {
+  const original = navigator.platform;
+  Object.defineProperty(navigator, 'platform', {
+    configurable: true,
+    value: platform,
+  });
+
+  return () => {
+    Object.defineProperty(navigator, 'platform', {
+      configurable: true,
+      value: original,
+    });
+  };
+}
+
 describe('InputHandler', () => {
   let ghostty: Ghostty;
   let container: ReturnType<typeof createMockContainer>;
@@ -533,21 +548,58 @@ describe('InputHandler', () => {
       expect(dataReceived[0].charCodeAt(0)).toBe(0x1a);
     });
 
-    test('Cmd+C allows copy (no data sent)', () => {
-      const _handler = new InputHandler(
-        ghostty,
-        container as any,
-        (data) => dataReceived.push(data),
-        () => {
-          _bellCalled = true;
-        }
-      );
+    test('Cmd+C allows copy on macOS without sending terminal data', () => {
+      const restoreNavigatorPlatform = setNavigatorPlatformForTest('MacIntel');
+      try {
+        const _handler = new InputHandler(
+          ghostty,
+          container as any,
+          (data) => dataReceived.push(data),
+          () => {
+            _bellCalled = true;
+          },
+          undefined,
+          undefined,
+          undefined,
+          () => true
+        );
 
-      simulateKey(container, createKeyEvent('KeyC', 'c', { meta: true }));
+        const event = createKeyEvent('KeyC', 'c', { meta: true });
+        simulateKey(container, event);
 
-      // Cmd+C should NOT send data - it should allow copy operation
-      // SelectionManager handles the actual copying
-      expect(dataReceived.length).toBe(0);
+        expect(dataReceived).toEqual([]);
+        expect(event.preventDefault).toHaveBeenCalled();
+        expect(event.stopPropagation).toHaveBeenCalled();
+      } finally {
+        restoreNavigatorPlatform();
+      }
+    });
+
+    test('Ctrl+Shift+C allows copy on non-mac without stealing plain Ctrl+C', () => {
+      const restoreNavigatorPlatform = setNavigatorPlatformForTest('Win32');
+      try {
+        const _handler = new InputHandler(
+          ghostty,
+          container as any,
+          (data) => dataReceived.push(data),
+          () => {
+            _bellCalled = true;
+          },
+          undefined,
+          undefined,
+          undefined,
+          () => true
+        );
+
+        const event = createKeyEvent('KeyC', 'c', { ctrl: true, shift: true });
+        simulateKey(container, event);
+
+        expect(dataReceived).toEqual([]);
+        expect(event.preventDefault).toHaveBeenCalled();
+        expect(event.stopPropagation).toHaveBeenCalled();
+      } finally {
+        restoreNavigatorPlatform();
+      }
     });
 
     test('suppresses leaked beforeinput text after Ctrl+C keydown', () => {
@@ -600,7 +652,7 @@ describe('InputHandler', () => {
       expect(beforeInputEvent.preventDefault).toHaveBeenCalled();
     });
 
-    test('suppresses case-normalized leaked beforeinput text for Ctrl+Shift chords', () => {
+    test('suppresses case-normalized leaked beforeinput text for non-shortcut Ctrl+Shift chords', () => {
       const inputElement = createMockContainer();
       const _handler = new InputHandler(
         ghostty,
@@ -616,12 +668,12 @@ describe('InputHandler', () => {
         inputElement as any
       );
 
-      simulateKey(container, createKeyEvent('KeyC', 'C', { ctrl: true, shift: true }));
-      const beforeInputEvent = createBeforeInputEvent('insertText', 'c');
+      simulateKey(container, createKeyEvent('KeyZ', 'Z', { ctrl: true, shift: true }));
+      const beforeInputEvent = createBeforeInputEvent('insertText', 'z');
       inputElement.dispatchEvent(beforeInputEvent);
 
       expect(dataReceived.length).toBe(1);
-      expect(dataReceived[0].charCodeAt(0)).toBe(0x03);
+      expect(dataReceived[0].charCodeAt(0)).toBe(0x1a);
       expect(beforeInputEvent.preventDefault).toHaveBeenCalled();
     });
 
@@ -1345,36 +1397,148 @@ describe('InputHandler', () => {
       expect(dataReceived.length).toBe(0);
     });
 
-    test('allows Ctrl+V to trigger paste', () => {
-      const _handler = new InputHandler(
+    test('passes Ctrl+V through as a canonical control byte', () => {
+      const inputElement = createMockContainer();
+      const handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
           _bellCalled = true;
-        }
+        },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        inputElement as any
       );
 
-      // Ctrl+V should NOT call onData callback (lets paste event handle it)
-      simulateKey(container, createKeyEvent('KeyV', 'v', { ctrl: true }));
+      const event = createKeyEvent('KeyV', 'v', { ctrl: true });
+      const encodeSpy = mock((_event: unknown) => new Uint8Array([118]));
+      (handler as any).encoder.encode = encodeSpy;
+      simulateKey(container, event);
+      const beforeInputEvent = createBeforeInputEvent('insertText', 'v');
+      inputElement.dispatchEvent(beforeInputEvent);
 
-      expect(dataReceived.length).toBe(0);
+      expect(dataReceived).toEqual(['\x16']);
+      expect(encodeSpy).not.toHaveBeenCalled();
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(event.stopPropagation).toHaveBeenCalled();
+      expect(beforeInputEvent.preventDefault).toHaveBeenCalled();
     });
 
-    test('allows Cmd+V to trigger paste', () => {
+    test('allows Cmd+V to trigger paste on macOS', () => {
+      const restoreNavigatorPlatform = setNavigatorPlatformForTest('MacIntel');
+      try {
+        const _handler = new InputHandler(
+          ghostty,
+          container as any,
+          (data) => dataReceived.push(data),
+          () => {
+            _bellCalled = true;
+          }
+        );
+
+        const event = createKeyEvent('KeyV', 'v', { meta: true });
+        simulateKey(container, event);
+
+        expect(dataReceived).toEqual([]);
+        expect(event.preventDefault).not.toHaveBeenCalled();
+        expect(event.stopPropagation).not.toHaveBeenCalled();
+
+        const pasteEvent = createClipboardEvent('pasted text');
+        container.dispatchEvent(pasteEvent);
+
+        expect(dataReceived).toEqual(['pasted text']);
+        expect(pasteEvent.preventDefault).toHaveBeenCalled();
+        expect(pasteEvent.stopPropagation).toHaveBeenCalled();
+      } finally {
+        restoreNavigatorPlatform();
+      }
+    });
+
+    test('allows Ctrl+Shift+V to trigger paste on non-mac', () => {
+      const restoreNavigatorPlatform = setNavigatorPlatformForTest('Win32');
+      try {
+        const _handler = new InputHandler(
+          ghostty,
+          container as any,
+          (data) => dataReceived.push(data),
+          () => {
+            _bellCalled = true;
+          }
+        );
+
+        const event = createKeyEvent('KeyV', 'v', { ctrl: true, shift: true });
+        simulateKey(container, event);
+
+        expect(dataReceived).toEqual([]);
+        expect(event.preventDefault).not.toHaveBeenCalled();
+        expect(event.stopPropagation).not.toHaveBeenCalled();
+
+        const pasteEvent = createClipboardEvent('windows paste');
+        container.dispatchEvent(pasteEvent);
+
+        expect(dataReceived).toEqual(['windows paste']);
+        expect(pasteEvent.preventDefault).toHaveBeenCalled();
+        expect(pasteEvent.stopPropagation).toHaveBeenCalled();
+      } finally {
+        restoreNavigatorPlatform();
+      }
+    });
+
+    test('does not leak a printable beforeinput for Cmd+A when the encoder emits no data', () => {
+      const inputElement = createMockContainer();
       const _handler = new InputHandler(
         ghostty,
         container as any,
         (data) => dataReceived.push(data),
         () => {
           _bellCalled = true;
-        }
+        },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        inputElement as any
       );
 
-      // Cmd+V should NOT call onData callback (lets paste event handle it)
-      simulateKey(container, createKeyEvent('KeyV', 'v', { meta: true }));
+      const event = createKeyEvent('KeyA', 'a', { meta: true });
+      simulateKey(container, event);
+      const beforeInputEvent = createBeforeInputEvent('insertText', 'a');
+      inputElement.dispatchEvent(beforeInputEvent);
 
-      expect(dataReceived.length).toBe(0);
+      expect(dataReceived).toEqual([]);
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(event.stopPropagation).toHaveBeenCalled();
+      expect(beforeInputEvent.preventDefault).toHaveBeenCalled();
+    });
+
+    test('does not leak a printable beforeinput for Cmd+E when the encoder emits no data', () => {
+      const inputElement = createMockContainer();
+      const _handler = new InputHandler(
+        ghostty,
+        container as any,
+        (data) => dataReceived.push(data),
+        () => {
+          _bellCalled = true;
+        },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        inputElement as any
+      );
+
+      const event = createKeyEvent('KeyE', 'e', { meta: true });
+      simulateKey(container, event);
+      const beforeInputEvent = createBeforeInputEvent('insertText', 'e');
+      inputElement.dispatchEvent(beforeInputEvent);
+
+      expect(dataReceived).toEqual([]);
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(event.stopPropagation).toHaveBeenCalled();
+      expect(beforeInputEvent.preventDefault).toHaveBeenCalled();
     });
   });
 

@@ -22,6 +22,20 @@ import type { IBufferRange, ILink, ILinkProvider } from '../types';
 export class OSC8LinkProvider implements ILinkProvider {
   constructor(private terminal: ITerminalForOSC8Provider) {}
 
+  private activateLink(uri: string, event: MouseEvent): void {
+    const openLink = this.terminal.options?.openLink;
+    if (openLink) {
+      void Promise.resolve(openLink(uri, event)).catch(() => undefined);
+      return;
+    }
+
+    if (!(event.ctrlKey || event.metaKey)) {
+      return;
+    }
+
+    window.open(uri, '_blank', 'noopener,noreferrer');
+  }
+
   /**
    * Provide all OSC 8 links on the given row
    * Note: This may return links that span multiple rows
@@ -100,10 +114,7 @@ export class OSC8LinkProvider implements ILinkProvider {
           text: uri,
           range,
           activate: (event) => {
-            // Open link if Ctrl/Cmd is pressed
-            if (event.ctrlKey || event.metaKey) {
-              window.open(uri, '_blank', 'noopener,noreferrer');
-            }
+            this.activateLink(uri, event);
           },
         });
       }
@@ -121,6 +132,9 @@ export class OSC8LinkProvider implements ILinkProvider {
  * Minimal terminal interface required by OSC8LinkProvider
  */
 export interface ITerminalForOSC8Provider {
+  options?: {
+    openLink?: (url: string, event: MouseEvent) => void | Promise<void>;
+  };
   buffer: {
     active: {
       length: number;

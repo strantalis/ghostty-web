@@ -40,6 +40,20 @@ export class UrlRegexProvider implements ILinkProvider {
 
   constructor(private terminal: ITerminalForUrlProvider) {}
 
+  private activateLink(url: string, event: MouseEvent): void {
+    const openLink = this.terminal.options?.openLink;
+    if (openLink) {
+      void Promise.resolve(openLink(url, event)).catch(() => undefined);
+      return;
+    }
+
+    if (!(event.ctrlKey || event.metaKey)) {
+      return;
+    }
+
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+
   /**
    * Provide all regex-detected URLs on the given row
    */
@@ -81,10 +95,7 @@ export class UrlRegexProvider implements ILinkProvider {
             end: { x: endX, y },
           },
           activate: (event) => {
-            // Open link if Ctrl/Cmd is pressed
-            if (event.ctrlKey || event.metaKey) {
-              window.open(url, '_blank', 'noopener,noreferrer');
-            }
+            this.activateLink(url, event);
           },
         });
       }
@@ -130,6 +141,9 @@ export class UrlRegexProvider implements ILinkProvider {
  * Minimal terminal interface required by UrlRegexProvider
  */
 export interface ITerminalForUrlProvider {
+  options?: {
+    openLink?: (url: string, event: MouseEvent) => void | Promise<void>;
+  };
   buffer: {
     active: {
       getLine(y: number): IBufferLineForUrlProvider | undefined;

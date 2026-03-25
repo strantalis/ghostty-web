@@ -137,6 +137,68 @@
       let term;
       let ws;
       let fitAddon;
+      const debugInput = new URLSearchParams(window.location.search).get('debugInput') === '1';
+
+      function logInputDebug(label, payload) {
+        if (!debugInput) return;
+        console.log(`[ghostty-web demo] ${label}`, payload);
+      }
+
+      function attachDomInputDebugging(element, label) {
+        if (!element) return;
+
+        element.addEventListener('keydown', (event) => {
+          logInputDebug(`${label}:keydown`, {
+            key: event.key,
+            code: event.code,
+            ctrl: event.ctrlKey,
+            meta: event.metaKey,
+            alt: event.altKey,
+            shift: event.shiftKey,
+            defaultPrevented: event.defaultPrevented,
+          });
+        });
+
+        element.addEventListener('beforeinput', (event) => {
+          logInputDebug(`${label}:beforeinput`, {
+            inputType: event.inputType,
+            data: event.data,
+            isComposing: event.isComposing,
+            defaultPrevented: event.defaultPrevented,
+          });
+        });
+
+        element.addEventListener('paste', (event) => {
+          logInputDebug(`${label}:paste`, {
+            types: event.clipboardData ? [...event.clipboardData.types] : [],
+            text: event.clipboardData?.getData('text/plain') ?? null,
+          });
+        });
+      }
+
+      function attachInputDebugging() {
+        if (!debugInput || !term?.textarea) return;
+        const terminalContainer = document.getElementById('terminal-container');
+
+        logInputDebug('debug enabled', {
+          hint: 'Use ?debugInput=1 to inspect keydown/beforeinput/paste/onData flow on both the terminal container and hidden textarea',
+        });
+
+        term.onKey(({ key, domEvent }) => {
+          logInputDebug('onKey', {
+            key,
+            code: domEvent.code,
+            ctrl: domEvent.ctrlKey,
+            meta: domEvent.metaKey,
+            alt: domEvent.altKey,
+            shift: domEvent.shiftKey,
+            defaultPrevented: domEvent.defaultPrevented,
+          });
+        });
+
+        attachDomInputDebugging(terminalContainer, 'container');
+        attachDomInputDebugging(term.textarea, 'textarea');
+      }
 
       async function initTerminal() {
         // Initialize WASM
@@ -159,6 +221,7 @@
         term.open(document.getElementById('terminal-container'));
         fitAddon.fit();
         fitAddon.observeResize(); // Auto-fit when container resizes
+        attachInputDebugging();
 
         // Handle window resize (for browsers that don't trigger ResizeObserver on window resize)
         window.addEventListener('resize', () => {
@@ -175,6 +238,7 @@
 
         // Handle user input
         term.onData((data) => {
+          logInputDebug('onData', JSON.stringify(data));
           if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(data);
           }

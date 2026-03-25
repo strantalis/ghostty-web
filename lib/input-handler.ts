@@ -173,6 +173,8 @@ export interface MouseTrackingConfig {
 
 export class InputHandler {
   private static readonly ASCII_LETTER_PATTERN = /^[A-Za-z]$/;
+  private static readonly MAC_PLATFORM_PATTERN = /(Mac|iPhone|iPad|iPod)/i;
+  private static readonly MAC_USER_AGENT_PATTERN = /(Macintosh|Mac OS X|iPhone|iPad|iPod)/i;
   private encoder: KeyEncoder;
   private mouseEncoder?: MouseEncoder;
   private container: HTMLElement;
@@ -402,6 +404,52 @@ export class InputHandler {
   }
 
   /**
+   * Detect whether the current browser platform should use macOS-style shortcuts.
+   */
+  private isMacPlatform(): boolean {
+    if (typeof navigator === 'undefined') {
+      return false;
+    }
+
+    const platform = navigator.platform ?? '';
+    const userAgent = navigator.userAgent ?? '';
+    return (
+      InputHandler.MAC_PLATFORM_PATTERN.test(platform) ||
+      InputHandler.MAC_USER_AGENT_PATTERN.test(userAgent)
+    );
+  }
+
+  /**
+   * Determine whether this keydown should be handled as a host copy shortcut.
+   */
+  private isTerminalCopyShortcut(event: KeyboardEvent): boolean {
+    if (event.code !== 'KeyC') {
+      return false;
+    }
+
+    if (this.isMacPlatform()) {
+      return event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
+    }
+
+    return event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey;
+  }
+
+  /**
+   * Determine whether this keydown should be handled as a host paste shortcut.
+   */
+  private isTerminalPasteShortcut(event: KeyboardEvent): boolean {
+    if (event.code !== 'KeyV') {
+      return false;
+    }
+
+    if (this.isMacPlatform()) {
+      return event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
+    }
+
+    return event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey;
+  }
+
+  /**
    * Encode pure Ctrl+printable chords to canonical ASCII control characters.
    * We intentionally bypass the encoder here because some terminal apps enable
    * enhanced keyboard reporting but still expect classic control bytes for
@@ -466,21 +514,20 @@ export class InputHandler {
       }
     }
 
-    // Allow Ctrl+V and Cmd+V to trigger paste event (don't preventDefault)
-    if ((event.ctrlKey || event.metaKey) && event.code === 'KeyV') {
-      // Let the browser's native paste event fire
-      return;
-    }
-
-    // Handle Cmd+C for copy (on Mac, Cmd+C should copy, not send interrupt)
-    // Note: Ctrl+C on all platforms sends interrupt signal (0x03)
-    if (event.metaKey && event.code === 'KeyC') {
+    // Host copy shortcuts stay selection-driven. Plain Ctrl+C still sends 0x03.
+    if (this.isTerminalCopyShortcut(event)) {
       // Try to copy selection via callback
       // If there's a selection and copy succeeds, prevent default
       // If no selection, let it fall through (browser may have other text selected)
       if (this.onCopyCallback && this.onCopyCallback()) {
         event.preventDefault();
+        event.stopPropagation();
       }
+      return;
+    }
+
+    // Host paste shortcuts remain browser-owned. Plain Ctrl+V stays raw everywhere.
+    if (this.isTerminalPasteShortcut(event)) {
       return;
     }
 
@@ -617,13 +664,13 @@ export class InputHandler {
         this.encoder.setOption(KeyEncoderOption.CURSOR_KEY_APPLICATION, appCursorMode);
       }
 
-      // For letter/number keys, even with modifiers, pass the base character
-      // This helps the encoder produce correct control sequences (e.g., Ctrl+A = 0x01)
-      // For special keys (Enter, Arrow keys, etc.), don't pass utf8
+      // For printable ASCII keys, pass associated text so Ghostty can disambiguate
+      // modified keys. Skip Meta chords, because Ghostty treats associated text on
+      // SUPER+letter as a plain printable character.
       const utf8 =
-        event.key.length === 1 && event.key.charCodeAt(0) < 128
-          ? event.key.toLowerCase() // Use lowercase for consistency
-          : undefined;
+        event.metaKey || event.key.length !== 1 || event.key.charCodeAt(0) >= 128
+          ? undefined
+          : event.key.toLowerCase(); // Use lowercase for consistency
 
       const encoded = this.encoder.encode({
         action,
@@ -640,10 +687,13 @@ export class InputHandler {
       event.preventDefault();
       event.stopPropagation();
 
-      // Emit the data
+      const beforeInputText = this.getPrintableBeforeInputCandidate(event);
+
       if (data.length > 0) {
         this.onDataCallback(data);
-        const beforeInputText = this.getPrintableBeforeInputCandidate(event);
+      }
+
+      if (data.length > 0 || beforeInputText !== null) {
         this.recordKeyDownData(data, {
           beforeInputText,
           suppressPrintableBeforeInput: beforeInputText !== null,
@@ -1032,7 +1082,7 @@ export class InputHandler {
    * Check if beforeinput should be ignored due to a recent keydown
    */
   private shouldIgnoreBeforeInput(data: string): boolean {
-    if (!this.lastKeyDownData) {
+    if (this.lastKeyDownData === null && !this.lastKeyDownSuppressPrintableBeforeInput) {
       return false;
     }
     const now = this.getNow();
