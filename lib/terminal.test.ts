@@ -1613,6 +1613,117 @@ describe('Terminal Modes', () => {
     term.dispose();
   });
 
+  test('responds to OSC 10 foreground color queries with ST terminator', async () => {
+    if (typeof document === 'undefined') return;
+    const term = await createIsolatedTerminal({
+      cols: 80,
+      rows: 24,
+      theme: {
+        foreground: '#f2f6fb',
+      },
+    });
+    const container = document.createElement('div');
+    term.open(container!);
+
+    const responses: string[] = [];
+    term.onData((data) => {
+      responses.push(data);
+    });
+
+    term.write('\x1b]10;?\x1b\\');
+
+    expect(responses).toEqual(['\x1b]10;rgb:f2f2/f6f6/fbfb\x1b\\']);
+    term.dispose();
+  });
+
+  test('responds to OSC 11 background color queries with BEL terminator', async () => {
+    if (typeof document === 'undefined') return;
+    const term = await createIsolatedTerminal({
+      cols: 80,
+      rows: 24,
+      theme: {
+        background: '#15202f',
+      },
+    });
+    const container = document.createElement('div');
+    term.open(container!);
+
+    const responses: string[] = [];
+    term.onData((data) => {
+      responses.push(data);
+    });
+
+    term.write('\x1b]11;?\x07');
+
+    expect(responses).toEqual(['\x1b]11;rgb:1515/2020/2f2f\x1b\\']);
+    term.dispose();
+  });
+
+  test('responds to OSC 12 cursor color queries from the configured theme', async () => {
+    if (typeof document === 'undefined') return;
+    const term = await createIsolatedTerminal({
+      cols: 80,
+      rows: 24,
+      theme: {
+        cursor: '#abcdef',
+      },
+    });
+    const container = document.createElement('div');
+    term.open(container!);
+
+    const responses: string[] = [];
+    term.onData((data) => {
+      responses.push(data);
+    });
+
+    term.write('\x1b]12;?\x1b\\');
+
+    expect(responses).toEqual(['\x1b]12;rgb:abab/cdcd/efef\x1b\\']);
+    term.dispose();
+  });
+
+  test('responds to OSC 12 cursor color queries using the dynamic cursor color when set', async () => {
+    if (typeof document === 'undefined') return;
+    const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
+    const container = document.createElement('div');
+    term.open(container!);
+
+    term.wasmTerm!.getDynamicCursorColor = () => 'rgb(18, 52, 86)';
+
+    const responses: string[] = [];
+    term.onData((data) => {
+      responses.push(data);
+    });
+
+    term.write('\x1b]12;?\x07');
+
+    expect(responses).toEqual(['\x1b]12;rgb:1212/3434/5656\x1b\\']);
+    term.dispose();
+  });
+
+  test('preserves response ordering when OSC color queries are mixed with terminal queries', async () => {
+    if (typeof document === 'undefined') return;
+    const term = await createIsolatedTerminal({
+      cols: 80,
+      rows: 24,
+      theme: {
+        foreground: '#d4d4d4',
+      },
+    });
+    const container = document.createElement('div');
+    term.open(container!);
+
+    const responses: string[] = [];
+    term.onData((data) => {
+      responses.push(data);
+    });
+
+    term.write('\x1b[5n\x1b]10;?\x1b\\');
+
+    expect(responses).toEqual(['\x1b[0n', '\x1b]10;rgb:d4d4/d4d4/d4d4\x1b\\']);
+    term.dispose();
+  });
+
   test('should detect focus event mode', async () => {
     if (typeof document === 'undefined') return;
     const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
