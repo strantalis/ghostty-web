@@ -11,6 +11,7 @@ export interface ITerminalOptions {
   cursorStyle?: 'block' | 'underline' | 'bar';
   theme?: ITheme;
   scrollback?: number; // Default: 1000
+  kittyImageStorageLimit?: number; // Default: use Ghostty lib default (currently 10 MB)
   fontSize?: number; // Default: 15
   fontFamily?: string; // Default: 'monospace'
   allowTransparency?: boolean;

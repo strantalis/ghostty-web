@@ -11,9 +11,22 @@ import {
   type Cursor,
   DirtyState,
   GHOSTTY_CONFIG_SIZE,
+  type GhosttyAbsoluteSelectionRange,
+  GhosttyBuildInfoData,
+  type GhosttyBuildInfoSnapshot,
   type GhosttyCell,
+  type GhosttyDiagnostics,
+  GhosttyFormatterFormat,
+  type GhosttyFormatterOptions,
+  GhosttyKittyImageCompression,
+  GhosttyKittyImageFormat,
+  type GhosttyKittyImagePlacement,
+  GhosttyKittyPlacementLayer,
+  GhosttyOptimizeMode,
+  GhosttyPointTag,
   GhosttyResult,
   type GhosttyTerminalConfig,
+  type GhosttyTypeLayouts,
   type GhosttyWasmExports,
   KeyEncoderOption,
   type KeyEvent,
@@ -31,9 +44,21 @@ export {
   CellFlags,
   type Cursor,
   DirtyState,
+  type GhosttyAbsoluteSelectionRange,
+  type GhosttyBuildInfoSnapshot,
   type GhosttyCell,
+  type GhosttyDiagnostics,
+  GhosttyFormatterFormat,
+  type GhosttyFormatterOptions,
+  GhosttyKittyImageCompression,
+  GhosttyKittyImageFormat,
+  type GhosttyKittyImagePlacement,
+  GhosttyKittyPlacementLayer,
+  GhosttyOptimizeMode,
+  GhosttyPointTag,
   GhosttyResult,
   type GhosttyTerminalConfig,
+  type GhosttyTypeLayouts,
   KeyEncoderOption,
   type RenderStateColors,
   type RenderStateCursor,
@@ -46,6 +71,27 @@ export {
 export class Ghostty {
   private exports: GhosttyWasmExports;
   private memory: WebAssembly.Memory;
+  private typeJsonCache?: string;
+  private typeLayoutsCache?: GhosttyTypeLayouts;
+  private buildInfoCache?: GhosttyBuildInfoSnapshot;
+  private static readonly REQUIRED_EXPORTS: (keyof GhosttyWasmExports)[] = [
+    'memory',
+    'ghostty_build_info',
+    'ghostty_type_json',
+    'ghostty_wasm_alloc_u8_array',
+    'ghostty_wasm_free_u8_array',
+    'ghostty_terminal_new_simple',
+    'ghostty_terminal_free_simple',
+    'ghostty_key_encoder_setopt_from_terminal_simple',
+    'ghostty_mouse_encoder_setopt_from_terminal_simple',
+    'ghostty_terminal_resize_with_cell_size_simple',
+    'ghostty_terminal_set_kitty_image_storage_limit',
+    'ghostty_terminal_write',
+    'ghostty_render_state_update',
+    'ghostty_render_state_get_viewport',
+    'ghostty_terminal_get_kitty_graphics_placements',
+    'ghostty_terminal_get_kitty_graphics_placements_in_viewport',
+  ];
 
   constructor(wasmInstance: WebAssembly.Instance) {
     this.exports = wasmInstance.exports as GhosttyWasmExports;
@@ -65,7 +111,60 @@ export class Ghostty {
     rows: number = 24,
     config?: GhosttyTerminalConfig
   ): GhosttyTerminal {
-    return new GhosttyTerminal(this.exports, this.memory, cols, rows, config);
+    return new GhosttyTerminal(
+      this.exports,
+      this.memory,
+      this.getTypeLayouts(),
+      cols,
+      rows,
+      config
+    );
+  }
+
+  getTypeJson(): string {
+    if (!this.typeJsonCache) {
+      const ptr = this.exports.ghostty_type_json();
+      if (!ptr) {
+        throw new Error('ghostty_type_json returned a null pointer');
+      }
+      this.typeJsonCache = this.readCString(ptr);
+    }
+
+    return this.typeJsonCache;
+  }
+
+  getTypeLayouts(): GhosttyTypeLayouts {
+    if (!this.typeLayoutsCache) {
+      this.typeLayoutsCache = JSON.parse(this.getTypeJson()) as GhosttyTypeLayouts;
+    }
+
+    return this.typeLayoutsCache;
+  }
+
+  getBuildInfo(): GhosttyBuildInfoSnapshot {
+    if (!this.buildInfoCache) {
+      this.buildInfoCache = {
+        simd: this.readBuildInfoBool(GhosttyBuildInfoData.SIMD),
+        kittyGraphics: this.readBuildInfoBool(GhosttyBuildInfoData.KITTY_GRAPHICS),
+        tmuxControlMode: this.readBuildInfoBool(GhosttyBuildInfoData.TMUX_CONTROL_MODE),
+        optimize: this.readBuildInfoOptimize(GhosttyBuildInfoData.OPTIMIZE),
+        versionString: this.readBuildInfoString(GhosttyBuildInfoData.VERSION_STRING),
+        versionMajor: this.readBuildInfoUsize(GhosttyBuildInfoData.VERSION_MAJOR),
+        versionMinor: this.readBuildInfoUsize(GhosttyBuildInfoData.VERSION_MINOR),
+        versionPatch: this.readBuildInfoUsize(GhosttyBuildInfoData.VERSION_PATCH),
+        versionBuild: this.readBuildInfoString(GhosttyBuildInfoData.VERSION_BUILD),
+      };
+    }
+
+    return { ...this.buildInfoCache };
+  }
+
+  getDiagnostics(): GhosttyDiagnostics {
+    return {
+      buildInfo: this.getBuildInfo(),
+      typeJson: this.getTypeJson(),
+      typeLayouts: this.getTypeLayouts(),
+    };
   }
 
   static async load(wasmPath?: string): Promise<Ghostty> {
@@ -159,7 +258,155 @@ export class Ghostty {
         },
       },
     });
+    Ghostty.assertCompatibleWasm(wasmInstance.exports as GhosttyWasmExports);
     return new Ghostty(wasmInstance);
+  }
+
+  private static assertCompatibleWasm(exports: GhosttyWasmExports): void {
+    for (const name of Ghostty.REQUIRED_EXPORTS) {
+      if (!(name in exports) || typeof exports[name] === 'undefined') {
+        throw new Error(
+          `Incompatible ghostty-vt.wasm: missing required export "${String(name)}". ` +
+            'Rebuild the WASM with `npm run build:wasm`.'
+        );
+      }
+    }
+
+    const handle = exports.ghostty_terminal_new_simple(2, 2);
+    if (!handle) {
+      throw new Error(
+        'Incompatible ghostty-vt.wasm: failed to create a probe terminal. ' +
+          'Rebuild the WASM with `npm run build:wasm`.'
+      );
+    }
+
+    const probeText = 'A';
+    const probeBytes = new TextEncoder().encode(probeText);
+    const cellSize = 16;
+    let inputPtr = 0;
+    let viewportPtr = 0;
+
+    try {
+      inputPtr = exports.ghostty_wasm_alloc_u8_array(probeBytes.length);
+      new Uint8Array(exports.memory.buffer).set(probeBytes, inputPtr);
+      exports.ghostty_terminal_write(handle, inputPtr, probeBytes.length);
+
+      const dirty = exports.ghostty_render_state_update(handle);
+      if (dirty !== DirtyState.NONE && dirty !== DirtyState.PARTIAL && dirty !== DirtyState.FULL) {
+        throw new Error(
+          'Incompatible ghostty-vt.wasm: render_state_update returned an invalid dirty state. ' +
+            'This usually means the browser shim ABI does not match the built WASM. ' +
+            'Rebuild the WASM with `npm run build:wasm`.'
+        );
+      }
+
+      viewportPtr = exports.ghostty_wasm_alloc_u8_array(4 * cellSize);
+      const cellCount = exports.ghostty_render_state_get_viewport(handle, viewportPtr, 4);
+      if (cellCount <= 0) {
+        throw new Error(
+          'Incompatible ghostty-vt.wasm: probe viewport read returned no cells. ' +
+            'Rebuild the WASM with `npm run build:wasm`.'
+        );
+      }
+
+      const firstCodepoint = new DataView(exports.memory.buffer, viewportPtr, cellSize).getUint32(
+        0,
+        true
+      );
+      if (firstCodepoint !== probeText.codePointAt(0)) {
+        throw new Error(
+          'Incompatible ghostty-vt.wasm: probe write did not update terminal state. ' +
+            'Rebuild the WASM with `npm run build:wasm`.'
+        );
+      }
+    } finally {
+      if (viewportPtr) {
+        exports.ghostty_wasm_free_u8_array(viewportPtr, 4 * cellSize);
+      }
+      if (inputPtr) {
+        exports.ghostty_wasm_free_u8_array(inputPtr, probeBytes.length);
+      }
+      exports.ghostty_terminal_free_simple(handle);
+    }
+  }
+
+  private readBuildInfoBool(field: GhosttyBuildInfoData): boolean {
+    const ptr = this.exports.ghostty_wasm_alloc_u8();
+    try {
+      this.expectSuccess(field, this.exports.ghostty_build_info(field, ptr));
+      return new DataView(this.memory.buffer).getUint8(ptr) !== 0;
+    } finally {
+      this.exports.ghostty_wasm_free_u8(ptr);
+    }
+  }
+
+  private readBuildInfoUsize(field: GhosttyBuildInfoData): number {
+    const ptr = this.exports.ghostty_wasm_alloc_usize();
+    try {
+      this.expectSuccess(field, this.exports.ghostty_build_info(field, ptr));
+      return new DataView(this.memory.buffer).getUint32(ptr, true);
+    } finally {
+      this.exports.ghostty_wasm_free_usize(ptr);
+    }
+  }
+
+  private readBuildInfoOptimize(field: GhosttyBuildInfoData): GhosttyOptimizeMode {
+    const ptr = this.exports.ghostty_wasm_alloc_u8_array(4);
+    try {
+      this.expectSuccess(field, this.exports.ghostty_build_info(field, ptr));
+      return new DataView(this.memory.buffer).getInt32(ptr, true) as GhosttyOptimizeMode;
+    } finally {
+      this.exports.ghostty_wasm_free_u8_array(ptr, 4);
+    }
+  }
+
+  private readBuildInfoString(field: GhosttyBuildInfoData): string {
+    const layout = this.getTypeLayouts().GhosttyString;
+    if (!layout) {
+      throw new Error('ghostty_type_json is missing GhosttyString layout metadata');
+    }
+
+    const ptrField = layout.fields.ptr;
+    const lenField = layout.fields.len;
+    if (!ptrField || !lenField) {
+      throw new Error('ghostty_type_json is missing GhosttyString.ptr/len field metadata');
+    }
+
+    const structPtr = this.exports.ghostty_wasm_alloc_u8_array(layout.size);
+    try {
+      this.expectSuccess(field, this.exports.ghostty_build_info(field, structPtr));
+
+      const view = new DataView(this.memory.buffer, structPtr, layout.size);
+      const dataPtr = view.getUint32(ptrField.offset, true);
+      const dataLen = view.getUint32(lenField.offset, true);
+      if (dataLen === 0) {
+        return '';
+      }
+
+      return this.readBytes(dataPtr, dataLen);
+    } finally {
+      this.exports.ghostty_wasm_free_u8_array(structPtr, layout.size);
+    }
+  }
+
+  private readBytes(ptr: number, len: number): string {
+    return new TextDecoder().decode(new Uint8Array(this.memory.buffer, ptr, len).slice());
+  }
+
+  private readCString(ptr: number): string {
+    const bytes = new Uint8Array(this.memory.buffer);
+    let end = ptr;
+    while (end < bytes.length && bytes[end] !== 0) {
+      end += 1;
+    }
+
+    return new TextDecoder().decode(bytes.slice(ptr, end));
+  }
+
+  private expectSuccess(field: GhosttyBuildInfoData, result: number): void {
+    if (result !== GhosttyResult.SUCCESS) {
+      throw new Error(`ghostty_build_info(${field}) failed with result ${result}`);
+    }
   }
 }
 
@@ -193,7 +440,7 @@ export class KeyEncoder {
   }
 
   syncFromTerminal(handle: TerminalHandle): void {
-    this.exports.ghostty_key_encoder_setopt_from_terminal(this.encoder, handle);
+    this.exports.ghostty_key_encoder_setopt_from_terminal_simple(this.encoder, handle);
   }
 
   encode(event: KeyEvent): Uint8Array {
@@ -292,7 +539,7 @@ export class MouseEncoder {
   }
 
   syncFromTerminal(handle: TerminalHandle): void {
-    this.exports.ghostty_mouse_encoder_setopt_from_terminal(this.encoder, handle);
+    this.exports.ghostty_mouse_encoder_setopt_from_terminal_simple(this.encoder, handle);
   }
 
   reset(): void {
@@ -405,12 +652,35 @@ export class MouseEncoder {
 export class GhosttyTerminal {
   private exports: GhosttyWasmExports;
   private memory: WebAssembly.Memory;
+  private typeLayouts: GhosttyTypeLayouts;
   private handle: TerminalHandle;
   private _cols: number;
   private _rows: number;
 
   /** Size of GhosttyCell in WASM (16 bytes) */
   private static readonly CELL_SIZE = 16;
+  private static readonly KITTY_PLACEMENT_SIZE = 72;
+  private static readonly KITTY_PLACEMENT_FIELDS = {
+    image_id: 0,
+    placement_id: 4,
+    z: 8,
+    viewport_x: 12,
+    viewport_y: 16,
+    x_offset: 20,
+    y_offset: 24,
+    pixel_width: 28,
+    pixel_height: 32,
+    source_x: 36,
+    source_y: 40,
+    source_width: 44,
+    source_height: 48,
+    image_width: 52,
+    image_height: 56,
+    format: 60,
+    compression: 61,
+    data_ptr: 64,
+    data_len: 68,
+  } as const;
 
   /** Reusable buffer for viewport operations */
   private viewportBufferPtr: number = 0;
@@ -419,16 +689,23 @@ export class GhosttyTerminal {
   /** Cell pool for zero-allocation rendering */
   private cellPool: GhosttyCell[] = [];
   private lastDirtyState: DirtyState = DirtyState.NONE;
+  private kittyGraphicsPlacements: GhosttyKittyImagePlacement[] = [];
+  private kittyGraphicsPlacementsViewportTop: number = 0;
+  private kittyGraphicsPlacementsDirty: boolean = true;
+  private kittyPlacementBufferPtr: number = 0;
+  private kittyPlacementBufferSize: number = 0;
 
   constructor(
     exports: GhosttyWasmExports,
     memory: WebAssembly.Memory,
+    typeLayouts: GhosttyTypeLayouts,
     cols: number = 80,
     rows: number = 24,
     config?: GhosttyTerminalConfig
   ) {
     this.exports = exports;
     this.memory = memory;
+    this.typeLayouts = typeLayouts;
     this._cols = cols;
     this._rows = rows;
 
@@ -477,6 +754,10 @@ export class GhosttyTerminal {
 
     if (!this.handle) throw new Error('Failed to create terminal');
 
+    if (config?.kittyImageStorageLimit !== undefined) {
+      this.setKittyImageStorageLimit(config.kittyImageStorageLimit);
+    }
+
     this.initCellPool();
   }
 
@@ -499,11 +780,81 @@ export class GhosttyTerminal {
     this.exports.ghostty_wasm_free_u8_array(ptr, bytes.length);
   }
 
-  resize(cols: number, rows: number): void {
-    if (cols === this._cols && rows === this._rows) return;
+  encodePaste(data: string, bracketed: boolean): string {
+    const bytes = new TextEncoder().encode(data);
+    const inputPtr = this.exports.ghostty_wasm_alloc_u8_array(bytes.length);
+    const writtenPtr = this.exports.ghostty_wasm_alloc_usize();
+    let outputPtr = 0;
+    let outputLen = 0;
+
+    try {
+      if (bytes.length > 0) {
+        new Uint8Array(this.memory.buffer).set(bytes, inputPtr);
+      }
+
+      let result = this.exports.ghostty_paste_encode(
+        inputPtr,
+        bytes.length,
+        bracketed,
+        0,
+        0,
+        writtenPtr
+      );
+      outputLen = new DataView(this.memory.buffer).getUint32(writtenPtr, true);
+
+      if (result !== GhosttyResult.SUCCESS && result !== GhosttyResult.OUT_OF_SPACE) {
+        throw new Error(`Failed to size paste payload: ${result}`);
+      }
+
+      if (outputLen === 0) {
+        return '';
+      }
+
+      outputPtr = this.exports.ghostty_wasm_alloc_u8_array(outputLen);
+      result = this.exports.ghostty_paste_encode(
+        inputPtr,
+        bytes.length,
+        bracketed,
+        outputPtr,
+        outputLen,
+        writtenPtr
+      );
+
+      if (result !== GhosttyResult.SUCCESS) {
+        throw new Error(`Failed to encode paste payload: ${result}`);
+      }
+
+      const bytesWritten = new DataView(this.memory.buffer).getUint32(writtenPtr, true);
+      const encoded = new Uint8Array(this.memory.buffer, outputPtr, bytesWritten);
+      return new TextDecoder().decode(encoded.slice());
+    } finally {
+      if (outputPtr) {
+        this.exports.ghostty_wasm_free_u8_array(outputPtr, outputLen);
+      }
+      this.exports.ghostty_wasm_free_usize(writtenPtr);
+      this.exports.ghostty_wasm_free_u8_array(inputPtr, bytes.length);
+    }
+  }
+
+  resize(cols: number, rows: number, cellWidthPx?: number, cellHeightPx?: number): void {
+    const normalizedCellWidth = this.normalizeCellSize(cellWidthPx);
+    const normalizedCellHeight = this.normalizeCellSize(cellHeightPx);
+    const dimensionsChanged = cols !== this._cols || rows !== this._rows;
+    const canSyncCellSize = normalizedCellWidth !== null && normalizedCellHeight !== null;
+    if (!dimensionsChanged && !canSyncCellSize) return;
     this._cols = cols;
     this._rows = rows;
-    this.exports.ghostty_terminal_resize_simple(this.handle, cols, rows);
+    if (canSyncCellSize) {
+      this.exports.ghostty_terminal_resize_with_cell_size_simple(
+        this.handle,
+        cols,
+        rows,
+        normalizedCellWidth,
+        normalizedCellHeight
+      );
+    } else {
+      this.exports.ghostty_terminal_resize_simple(this.handle, cols, rows);
+    }
     this.invalidateBuffers();
     this.initCellPool();
   }
@@ -522,6 +873,154 @@ export class GhosttyTerminal {
 
   syncMouseEncoder(encoder: MouseEncoder): void {
     encoder.syncFromTerminal(this.handle);
+  }
+
+  setKittyImageStorageLimit(limit: number): void {
+    const normalized = Math.max(0, Math.floor(limit));
+    const ptr = this.exports.ghostty_wasm_alloc_u8_array(8);
+
+    try {
+      new DataView(this.memory.buffer).setBigUint64(ptr, BigInt(normalized), true);
+      this.expectResult(
+        'ghostty_terminal_set_kitty_image_storage_limit',
+        this.exports.ghostty_terminal_set_kitty_image_storage_limit(this.handle, ptr)
+      );
+    } finally {
+      this.exports.ghostty_wasm_free_u8_array(ptr, 8);
+    }
+  }
+
+  format(options: GhosttyFormatterOptions): string {
+    const formatterOptionsLayout = this.getStructLayout('GhosttyFormatterTerminalOptions');
+    const formatterExtraLayout = this.getStructLayout('GhosttyFormatterTerminalExtra');
+    const screenExtraLayout = this.getStructLayout('GhosttyFormatterScreenExtra');
+    const selectionLayout = this.getStructLayout('GhosttySelection');
+    const gridRefLayout = this.getStructLayout('GhosttyGridRef');
+    const pointLayout = this.getStructLayout('GhosttyPoint');
+    const formatterOptionsPtr = this.exports.ghostty_wasm_alloc_u8_array(
+      formatterOptionsLayout.size
+    );
+    const selectionPtr = options.selection
+      ? this.exports.ghostty_wasm_alloc_u8_array(selectionLayout.size)
+      : 0;
+    const startPointPtr = options.selection
+      ? this.exports.ghostty_wasm_alloc_u8_array(pointLayout.size)
+      : 0;
+    const endPointPtr = options.selection
+      ? this.exports.ghostty_wasm_alloc_u8_array(pointLayout.size)
+      : 0;
+    const startRefPtr = options.selection
+      ? this.exports.ghostty_wasm_alloc_u8_array(gridRefLayout.size)
+      : 0;
+    const endRefPtr = options.selection
+      ? this.exports.ghostty_wasm_alloc_u8_array(gridRefLayout.size)
+      : 0;
+
+    try {
+      this.zeroMemory(formatterOptionsPtr, formatterOptionsLayout.size);
+
+      const optionsView = new DataView(
+        this.memory.buffer,
+        formatterOptionsPtr,
+        formatterOptionsLayout.size
+      );
+      const extraPtr = formatterOptionsPtr + formatterOptionsLayout.fields.extra.offset;
+      const extraView = new DataView(this.memory.buffer, extraPtr, formatterExtraLayout.size);
+      const screenExtraPtr = extraPtr + formatterExtraLayout.fields.screen.offset;
+      const screenView = new DataView(this.memory.buffer, screenExtraPtr, screenExtraLayout.size);
+
+      optionsView.setUint32(
+        formatterOptionsLayout.fields.size.offset,
+        formatterOptionsLayout.size,
+        true
+      );
+      optionsView.setInt32(formatterOptionsLayout.fields.emit.offset, options.format, true);
+      optionsView.setUint8(formatterOptionsLayout.fields.unwrap.offset, options.unwrap ? 1 : 0);
+      optionsView.setUint8(
+        formatterOptionsLayout.fields.trim.offset,
+        (options.trim ?? true) ? 1 : 0
+      );
+
+      extraView.setUint32(formatterExtraLayout.fields.size.offset, formatterExtraLayout.size, true);
+      screenView.setUint32(screenExtraLayout.fields.size.offset, screenExtraLayout.size, true);
+
+      if (options.includeTerminalState && options.format !== GhosttyFormatterFormat.PLAIN) {
+        extraView.setUint8(formatterExtraLayout.fields.palette.offset, 1);
+        extraView.setUint8(formatterExtraLayout.fields.modes.offset, 1);
+        extraView.setUint8(formatterExtraLayout.fields.scrolling_region.offset, 1);
+        extraView.setUint8(formatterExtraLayout.fields.tabstops.offset, 1);
+        extraView.setUint8(formatterExtraLayout.fields.pwd.offset, 1);
+        extraView.setUint8(formatterExtraLayout.fields.keyboard.offset, 1);
+        screenView.setUint8(screenExtraLayout.fields.cursor.offset, 1);
+        screenView.setUint8(screenExtraLayout.fields.style.offset, 1);
+        screenView.setUint8(screenExtraLayout.fields.hyperlink.offset, 1);
+        screenView.setUint8(screenExtraLayout.fields.protection.offset, 1);
+        screenView.setUint8(screenExtraLayout.fields.kitty_keyboard.offset, 1);
+        screenView.setUint8(screenExtraLayout.fields.charsets.offset, 1);
+      }
+
+      if (
+        options.selection &&
+        selectionPtr &&
+        startPointPtr &&
+        endPointPtr &&
+        startRefPtr &&
+        endRefPtr
+      ) {
+        this.writePoint(
+          startPointPtr,
+          GhosttyPointTag.SCREEN,
+          options.selection.start.x,
+          options.selection.start.y
+        );
+        this.writePoint(
+          endPointPtr,
+          GhosttyPointTag.SCREEN,
+          options.selection.end.x,
+          options.selection.end.y
+        );
+        this.expectResult(
+          'ghostty_terminal_grid_ref_ptr(start)',
+          this.exports.ghostty_terminal_grid_ref_ptr(this.handle, startPointPtr, startRefPtr)
+        );
+        this.expectResult(
+          'ghostty_terminal_grid_ref_ptr(end)',
+          this.exports.ghostty_terminal_grid_ref_ptr(this.handle, endPointPtr, endRefPtr)
+        );
+
+        this.zeroMemory(selectionPtr, selectionLayout.size);
+        const selectionView = new DataView(this.memory.buffer, selectionPtr, selectionLayout.size);
+        selectionView.setUint32(selectionLayout.fields.size.offset, selectionLayout.size, true);
+        this.copyMemory(
+          selectionPtr + selectionLayout.fields.start.offset,
+          startRefPtr,
+          gridRefLayout.size
+        );
+        this.copyMemory(
+          selectionPtr + selectionLayout.fields.end.offset,
+          endRefPtr,
+          gridRefLayout.size
+        );
+        selectionView.setUint8(
+          selectionLayout.fields.rectangle.offset,
+          options.selection.rectangle ? 1 : 0
+        );
+        this.writePointer(
+          optionsView,
+          formatterOptionsLayout.fields.selection.offset,
+          selectionPtr
+        );
+      }
+
+      return this.readFormattedTerminalOutput(formatterOptionsPtr);
+    } finally {
+      if (endRefPtr) this.exports.ghostty_wasm_free_u8_array(endRefPtr, gridRefLayout.size);
+      if (startRefPtr) this.exports.ghostty_wasm_free_u8_array(startRefPtr, gridRefLayout.size);
+      if (endPointPtr) this.exports.ghostty_wasm_free_u8_array(endPointPtr, pointLayout.size);
+      if (startPointPtr) this.exports.ghostty_wasm_free_u8_array(startPointPtr, pointLayout.size);
+      if (selectionPtr) this.exports.ghostty_wasm_free_u8_array(selectionPtr, selectionLayout.size);
+      this.exports.ghostty_wasm_free_u8_array(formatterOptionsPtr, formatterOptionsLayout.size);
+    }
   }
 
   // ==========================================================================
@@ -551,6 +1050,9 @@ export class GhosttyTerminal {
    */
   prepareRenderState(): void {
     this.update();
+    if (this.lastDirtyState !== DirtyState.NONE) {
+      this.kittyGraphicsPlacementsDirty = true;
+    }
   }
 
   /**
@@ -670,6 +1172,27 @@ export class GhosttyTerminal {
     // Parse cells into pool (reuses existing objects)
     this.parseCellsIntoPool(this.viewportBufferPtr, totalCells);
     return this.cellPool;
+  }
+
+  getKittyGraphicsPlacements(): readonly GhosttyKittyImagePlacement[] {
+    this.update();
+    if (this.lastDirtyState !== DirtyState.NONE) {
+      this.kittyGraphicsPlacementsDirty = true;
+    }
+    return this.getKittyGraphicsPlacementsFromRenderState(0);
+  }
+
+  getKittyGraphicsPlacementsFromRenderState(
+    viewportTop: number = 0
+  ): readonly GhosttyKittyImagePlacement[] {
+    const normalizedViewportTop = Math.max(0, Math.floor(viewportTop));
+    if (
+      this.kittyGraphicsPlacementsDirty ||
+      this.kittyGraphicsPlacementsViewportTop !== normalizedViewportTop
+    ) {
+      this.refreshKittyGraphicsPlacements(normalizedViewportTop);
+    }
+    return this.kittyGraphicsPlacements;
   }
 
   // ==========================================================================
@@ -958,6 +1481,43 @@ export class GhosttyTerminal {
     }
   }
 
+  readBellCount(): number {
+    return this.exports.ghostty_terminal_read_bell_count(this.handle);
+  }
+
+  hasTitleChange(): boolean {
+    return this.exports.ghostty_terminal_has_title_change(this.handle);
+  }
+
+  readTitleChange(): string | null {
+    if (!this.hasTitleChange()) return null;
+
+    const bufferSizes = [256, 1024, 4096];
+
+    for (const bufSize of bufferSizes) {
+      const bufPtr = this.exports.ghostty_wasm_alloc_u8_array(bufSize);
+
+      try {
+        const bytesRead = this.exports.ghostty_terminal_read_title_change(
+          this.handle,
+          bufPtr,
+          bufSize
+        );
+
+        if (bytesRead === -1) continue;
+        if (bytesRead < 0) return null;
+        if (bytesRead === 0) return '';
+
+        const bytes = new Uint8Array(this.memory.buffer, bufPtr, bytesRead);
+        return new TextDecoder().decode(bytes.slice());
+      } finally {
+        this.exports.ghostty_wasm_free_u8_array(bufPtr, bufSize);
+      }
+    }
+
+    return null;
+  }
+
   /**
    * Query arbitrary terminal mode by number
    * @param mode Mode number (e.g., 25 for cursor visibility, 2004 for bracketed paste)
@@ -965,6 +1525,93 @@ export class GhosttyTerminal {
    */
   getMode(mode: number, isAnsi: boolean = false): boolean {
     return this.exports.ghostty_terminal_get_mode(this.handle, mode, isAnsi) !== 0;
+  }
+
+  private refreshKittyGraphicsPlacements(viewportTop: number = 0): void {
+    const count = this.exports.ghostty_terminal_get_kitty_graphics_placements_in_viewport(
+      this.handle,
+      viewportTop,
+      0,
+      0
+    );
+    if (count <= 0) {
+      this.kittyGraphicsPlacements = [];
+      this.kittyGraphicsPlacementsViewportTop = viewportTop;
+      this.kittyGraphicsPlacementsDirty = false;
+      return;
+    }
+
+    const placementSize = GhosttyTerminal.KITTY_PLACEMENT_SIZE;
+    const neededSize = count * placementSize;
+    if (!this.kittyPlacementBufferPtr || this.kittyPlacementBufferSize < neededSize) {
+      if (this.kittyPlacementBufferPtr) {
+        this.exports.ghostty_wasm_free_u8_array(
+          this.kittyPlacementBufferPtr,
+          this.kittyPlacementBufferSize
+        );
+      }
+      this.kittyPlacementBufferPtr = this.exports.ghostty_wasm_alloc_u8_array(neededSize);
+      this.kittyPlacementBufferSize = neededSize;
+    }
+
+    const written = this.exports.ghostty_terminal_get_kitty_graphics_placements_in_viewport(
+      this.handle,
+      viewportTop,
+      this.kittyPlacementBufferPtr,
+      count
+    );
+    if (written <= 0) {
+      this.kittyGraphicsPlacements = [];
+      this.kittyGraphicsPlacementsViewportTop = viewportTop;
+      this.kittyGraphicsPlacementsDirty = false;
+      return;
+    }
+
+    const view = new DataView(
+      this.memory.buffer,
+      this.kittyPlacementBufferPtr,
+      written * placementSize
+    );
+    const field = GhosttyTerminal.KITTY_PLACEMENT_FIELDS;
+    const placements: GhosttyKittyImagePlacement[] = [];
+
+    for (let i = 0; i < written; i++) {
+      const offset = i * placementSize;
+      const dataPtr = view.getUint32(offset + field.data_ptr, true);
+      const dataLen = view.getUint32(offset + field.data_len, true);
+      const data = dataLen
+        ? new Uint8ClampedArray(new Uint8Array(this.memory.buffer, dataPtr, dataLen).slice().buffer)
+        : new Uint8ClampedArray();
+      const z = view.getInt32(offset + field.z, true);
+      placements.push({
+        imageId: view.getUint32(offset + field.image_id, true),
+        placementId: view.getUint32(offset + field.placement_id, true),
+        z,
+        layer: this.getKittyPlacementLayer(z),
+        viewportX: view.getInt32(offset + field.viewport_x, true),
+        viewportY: view.getInt32(offset + field.viewport_y, true),
+        xOffset: view.getUint32(offset + field.x_offset, true),
+        yOffset: view.getUint32(offset + field.y_offset, true),
+        pixelWidth: view.getUint32(offset + field.pixel_width, true),
+        pixelHeight: view.getUint32(offset + field.pixel_height, true),
+        sourceX: view.getUint32(offset + field.source_x, true),
+        sourceY: view.getUint32(offset + field.source_y, true),
+        sourceWidth: view.getUint32(offset + field.source_width, true),
+        sourceHeight: view.getUint32(offset + field.source_height, true),
+        imageWidth: view.getUint32(offset + field.image_width, true),
+        imageHeight: view.getUint32(offset + field.image_height, true),
+        format: view.getUint8(offset + field.format) as GhosttyKittyImageFormat,
+        compression: view.getUint8(offset + field.compression) as GhosttyKittyImageCompression,
+        dataPtr,
+        dataLen,
+        data,
+      });
+    }
+
+    placements.sort((a, b) => a.z - b.z || a.imageId - b.imageId || a.placementId - b.placementId);
+    this.kittyGraphicsPlacements = placements;
+    this.kittyGraphicsPlacementsViewportTop = viewportTop;
+    this.kittyGraphicsPlacementsDirty = false;
   }
 
   // ==========================================================================
@@ -1112,16 +1759,127 @@ export class GhosttyTerminal {
     return String.fromCodePoint(...codepoints);
   }
 
+  private readFormattedTerminalOutput(optionsPtr: number): string {
+    const writtenPtr = this.exports.ghostty_wasm_alloc_usize();
+    let outputPtr = 0;
+    let outputLen = 0;
+
+    try {
+      let result = this.exports.ghostty_terminal_format_buf(
+        this.handle,
+        optionsPtr,
+        0,
+        0,
+        writtenPtr
+      );
+      outputLen = new DataView(this.memory.buffer).getUint32(writtenPtr, true);
+      if (result !== GhosttyResult.OUT_OF_SPACE && result !== GhosttyResult.SUCCESS) {
+        throw new Error(`ghostty_terminal_format_buf sizing failed: ${result}`);
+      }
+
+      if (outputLen === 0) {
+        return '';
+      }
+
+      outputPtr = this.exports.ghostty_wasm_alloc_u8_array(outputLen);
+      result = this.exports.ghostty_terminal_format_buf(
+        this.handle,
+        optionsPtr,
+        outputPtr,
+        outputLen,
+        writtenPtr
+      );
+      if (result !== GhosttyResult.SUCCESS) {
+        throw new Error(`ghostty_terminal_format_buf failed: ${result}`);
+      }
+
+      const bytesWritten = new DataView(this.memory.buffer).getUint32(writtenPtr, true);
+      return new TextDecoder().decode(
+        new Uint8Array(this.memory.buffer, outputPtr, bytesWritten).slice()
+      );
+    } finally {
+      if (outputPtr) {
+        this.exports.ghostty_wasm_free_u8_array(outputPtr, outputLen);
+      }
+      this.exports.ghostty_wasm_free_usize(writtenPtr);
+    }
+  }
+
+  private getStructLayout(name: string) {
+    const layout = this.typeLayouts[name];
+    if (!layout) {
+      throw new Error(`ghostty_type_json is missing ${name} layout metadata`);
+    }
+    return layout;
+  }
+
+  private getKittyPlacementLayer(z: number): GhosttyKittyPlacementLayer {
+    if (z < -(2 ** 30)) {
+      return GhosttyKittyPlacementLayer.BELOW_BG;
+    }
+    if (z < 0) {
+      return GhosttyKittyPlacementLayer.BELOW_TEXT;
+    }
+    return GhosttyKittyPlacementLayer.ABOVE_TEXT;
+  }
+
+  private writePoint(ptr: number, tag: GhosttyPointTag, x: number, y: number): void {
+    const pointLayout = this.getStructLayout('GhosttyPoint');
+    const coordinateLayout = this.getStructLayout('GhosttyPointCoordinate');
+    const valueField = pointLayout.fields.value;
+    const view = new DataView(this.memory.buffer, ptr, pointLayout.size);
+    this.zeroMemory(ptr, pointLayout.size);
+    view.setInt32(pointLayout.fields.tag.offset, tag, true);
+    view.setUint16(valueField.offset + coordinateLayout.fields.x.offset, x, true);
+    view.setUint32(valueField.offset + coordinateLayout.fields.y.offset, y, true);
+  }
+
+  private writePointer(view: DataView, offset: number, ptr: number): void {
+    view.setUint32(offset, ptr, true);
+  }
+
+  private copyMemory(destPtr: number, srcPtr: number, len: number): void {
+    new Uint8Array(this.memory.buffer, destPtr, len).set(
+      new Uint8Array(this.memory.buffer, srcPtr, len)
+    );
+  }
+
+  private zeroMemory(ptr: number, len: number): void {
+    new Uint8Array(this.memory.buffer, ptr, len).fill(0);
+  }
+
+  private expectResult(operation: string, result: number): void {
+    if (result !== GhosttyResult.SUCCESS) {
+      throw new Error(`${operation} failed with result ${result}`);
+    }
+  }
+
   private invalidateBuffers(): void {
     if (this.viewportBufferPtr) {
       this.exports.ghostty_wasm_free_u8_array(this.viewportBufferPtr, this.viewportBufferSize);
       this.viewportBufferPtr = 0;
       this.viewportBufferSize = 0;
     }
+    if (this.kittyPlacementBufferPtr) {
+      this.exports.ghostty_wasm_free_u8_array(
+        this.kittyPlacementBufferPtr,
+        this.kittyPlacementBufferSize
+      );
+      this.kittyPlacementBufferPtr = 0;
+      this.kittyPlacementBufferSize = 0;
+    }
     if (this.graphemeBufferPtr) {
       this.exports.ghostty_wasm_free_u8_array(this.graphemeBufferPtr, 16 * 4);
       this.graphemeBufferPtr = 0;
     }
     this.graphemeBuffer = null;
+    this.kittyGraphicsPlacements = [];
+    this.kittyGraphicsPlacementsViewportTop = 0;
+    this.kittyGraphicsPlacementsDirty = true;
+  }
+
+  private normalizeCellSize(value: number | undefined): number | null {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+    return Math.max(0, Math.round(value));
   }
 }

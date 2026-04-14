@@ -11,7 +11,11 @@
  */
 
 import { EventEmitter } from './event-emitter';
-import type { GhosttyTerminal } from './ghostty';
+import {
+  type GhosttyAbsoluteSelectionRange,
+  GhosttyFormatterFormat,
+  type GhosttyTerminal,
+} from './ghostty';
 import type { IEvent } from './interfaces';
 import type { CanvasRenderer } from './renderer';
 import type { Terminal } from './terminal';
@@ -225,9 +229,23 @@ export class SelectionManager {
   copySelection(): boolean {
     if (!this.hasSelection()) return false;
 
-    const text = this.getSelection();
+    const selection = this.getAbsoluteSelectionRange();
+    const text = selection
+      ? this.wasmTerm.format({
+          format: GhosttyFormatterFormat.PLAIN,
+          selection,
+          trim: true,
+        })
+      : this.getSelection();
     if (text) {
-      this.copyToClipboard(text);
+      const html = selection
+        ? this.wasmTerm.format({
+            format: GhosttyFormatterFormat.HTML,
+            selection,
+            trim: true,
+          })
+        : undefined;
+      this.copyToClipboard(text, html || undefined);
       return true;
     }
     return false;
@@ -334,6 +352,17 @@ export class SelectionManager {
     return {
       start: { x: coords.startCol, y: coords.startRow },
       end: { x: coords.endCol, y: coords.endRow },
+    };
+  }
+
+  getAbsoluteSelectionRange(): GhosttyAbsoluteSelectionRange | undefined {
+    const coords = this.normalizeAbsoluteSelection();
+    if (!coords) return undefined;
+
+    return {
+      start: { x: coords.startCol, y: coords.startAbsRow },
+      end: { x: coords.endCol, y: coords.endAbsRow },
+      rectangle: false,
     };
   }
 
@@ -866,16 +895,10 @@ export class SelectionManager {
    * Returns coordinates in VIEWPORT space for rendering, clamped to visible area
    */
   private normalizeSelection(): SelectionCoordinates | null {
-    if (!this.selectionStart || !this.selectionEnd) return null;
+    const absolute = this.normalizeAbsoluteSelection();
+    if (!absolute) return null;
 
-    let { col: startCol, absoluteRow: startAbsRow } = this.selectionStart;
-    let { col: endCol, absoluteRow: endAbsRow } = this.selectionEnd;
-
-    // Swap if selection goes backwards
-    if (startAbsRow > endAbsRow || (startAbsRow === endAbsRow && startCol > endCol)) {
-      [startCol, endCol] = [endCol, startCol];
-      [startAbsRow, endAbsRow] = [endAbsRow, startAbsRow];
-    }
+    let { startCol, startAbsRow, endCol, endAbsRow } = absolute;
 
     // Convert to viewport coordinates
     let startRow = this.absoluteRowToViewport(startAbsRow);
@@ -901,6 +924,25 @@ export class SelectionManager {
     }
 
     return { startCol, startRow, endCol, endRow };
+  }
+
+  private normalizeAbsoluteSelection(): {
+    startCol: number;
+    startAbsRow: number;
+    endCol: number;
+    endAbsRow: number;
+  } | null {
+    if (!this.selectionStart || !this.selectionEnd) return null;
+
+    let { col: startCol, absoluteRow: startAbsRow } = this.selectionStart;
+    let { col: endCol, absoluteRow: endAbsRow } = this.selectionEnd;
+
+    if (startAbsRow > endAbsRow || (startAbsRow === endAbsRow && startCol > endCol)) {
+      [startCol, endCol] = [endCol, startCol];
+      [startAbsRow, endAbsRow] = [endAbsRow, startAbsRow];
+    }
+
+    return { startCol, startAbsRow, endCol, endAbsRow };
   }
 
   /**
@@ -954,15 +996,15 @@ export class SelectionManager {
    * 2. Try navigator.clipboard.writeText (modern async API, may fail in Safari)
    * 3. Fall back to execCommand (legacy, for older browsers)
    */
-  private copyToClipboard(text: string): void {
+  private copyToClipboard(text: string, html?: string): void {
     // First try: ClipboardItem API (modern, Safari-compatible)
     // Safari allows this because we create the ClipboardItem synchronously
     // within the user gesture, even though the write is async
     if (navigator.clipboard && typeof ClipboardItem !== 'undefined') {
       try {
-        const blob = new Blob([text], { type: 'text/plain' });
         const clipboardItem = new ClipboardItem({
-          'text/plain': blob,
+          'text/plain': new Blob([text], { type: 'text/plain' }),
+          ...(html ? { 'text/html': new Blob([html], { type: 'text/html' }) } : {}),
         });
         navigator.clipboard.write([clipboardItem]).catch((err) => {
           console.warn('ClipboardItem write failed, trying writeText:', err);

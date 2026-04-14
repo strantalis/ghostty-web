@@ -6,3 +6,4 @@ coverage/
 .vite/
 bun.lock
 ghostty/
+.playwright-mcp/

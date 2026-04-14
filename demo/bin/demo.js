@@ -275,6 +275,17 @@ const HTML_TEMPLATE = `<!doctype html>
         }
       });
 
+      window.__ghosttyDemo = {
+        term,
+        fitAddon,
+        get websocket() {
+          return ws;
+        },
+        getStatus() {
+          return statusText.textContent || '';
+        },
+      };
+
       // Handle resize - notify PTY when terminal dimensions change
       term.onResize(({ cols, rows }) => {
         if (ws && ws.readyState === WebSocket.OPEN) {

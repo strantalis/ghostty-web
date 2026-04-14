@@ -10,6 +10,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { GhosttyFormatterFormat } from './ghostty';
 import type { Terminal } from './terminal';
 import { createIsolatedTerminal } from './test-helpers';
 
@@ -854,6 +855,41 @@ describe('getSelectionPosition()', () => {
   });
 });
 
+describe('Formatter export', () => {
+  test('formatActiveScreen exports plain text from the current screen', async () => {
+    const term = await createIsolatedTerminal();
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    term.open(container);
+
+    term.write('alpha\r\nbeta');
+
+    const exported = term.formatActiveScreen(GhosttyFormatterFormat.PLAIN);
+    expect(exported).toContain('alpha');
+    expect(exported).toContain('beta');
+
+    term.dispose();
+    container.remove();
+  });
+
+  test('formatSelection exports styled HTML for the active selection', async () => {
+    const term = await createIsolatedTerminal();
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    term.open(container);
+
+    term.write('\x1b[31mHello\x1b[0m world');
+    setSelectionViewportRelative(term, 0, 0, 4, 0);
+
+    const html = term.formatSelection(GhosttyFormatterFormat.HTML);
+    expect(html).toContain('Hello');
+    expect(html).toContain('color');
+
+    term.dispose();
+    container.remove();
+  });
+});
+
 describe('onKey event', () => {
   let container: HTMLElement | null = null;
 
@@ -1543,6 +1579,23 @@ describe('Terminal Modes', () => {
     term.write('\x1b[?2004h');
     term.paste('test2');
     expect(receivedData).toBe('\x1b[200~test2\x1b[201~');
+
+    term.dispose();
+  });
+
+  test('paste() should sanitize unbracketed newlines via upstream encoding', async () => {
+    if (typeof document === 'undefined') return;
+    const term = await createIsolatedTerminal({ cols: 80, rows: 24 });
+    const container = document.createElement('div');
+    term.open(container!);
+
+    let receivedData = '';
+    term.onData((data) => {
+      receivedData = data;
+    });
+
+    term.paste('hello\nworld');
+    expect(receivedData).toBe('hello\rworld');
 
     term.dispose();
   });

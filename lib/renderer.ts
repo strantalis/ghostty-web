@@ -13,8 +13,8 @@
 import { renderBoxDrawing } from './box-drawing';
 import type { ITheme } from './interfaces';
 import type { SelectionManager } from './selection-manager';
-import type { GhosttyCell } from './types';
-import { CellFlags } from './types';
+import type { GhosttyCell, GhosttyKittyImagePlacement } from './types';
+import { CellFlags, GhosttyKittyImageFormat, GhosttyKittyPlacementLayer } from './types';
 
 // Interface for objects that can be rendered
 export interface IRenderable {
@@ -43,6 +43,10 @@ export interface IRenderable {
   getGraphemeStringFromRenderState?(row: number, col: number): string;
   /** Get dynamic cursor color set by OSC 12, or null for theme default */
   getDynamicCursorColor?(): string | null;
+  /** Visible kitty graphics placements from the most recent render-state refresh */
+  getKittyGraphicsPlacementsFromRenderState?(
+    viewportTop?: number
+  ): readonly GhosttyKittyImagePlacement[];
 }
 
 export interface IScrollbackProvider {
@@ -106,6 +110,7 @@ export const DEFAULT_THEME: Required<ITheme> = {
 // ============================================================================
 
 export class CanvasRenderer {
+  private static readonly KITTY_UNICODE_PLACEHOLDER = 0x10eeee;
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private fontSize: number;
@@ -123,6 +128,9 @@ export class CanvasRenderer {
 
   // Viewport tracking (for scrolling)
   private lastViewportY: number = 0;
+  private lastScrollbackProvider?: IScrollbackProvider;
+  private lastScrollbarOpacity: number = 1;
+  private kittyAsyncRerenderScheduled: boolean = false;
 
   // Current buffer being rendered (for grapheme lookups)
   private currentBuffer: IRenderable | null = null;
@@ -150,6 +158,10 @@ export class CanvasRenderer {
     endX: number;
     endY: number;
   } | null = null;
+  private currentKittyPlacements: readonly GhosttyKittyImagePlacement[] = [];
+  private kittyImageCache = new Map<string, HTMLCanvasElement>();
+  private kittyImageDecodePromises = new Map<string, Promise<void>>();
+  private kittyImageDecodeFailures = new Set<string>();
 
   constructor(canvas: HTMLCanvasElement, options: RendererOptions = {}) {
     this.canvas = canvas;
@@ -266,6 +278,8 @@ export class CanvasRenderer {
   ): void {
     // Store buffer reference for grapheme lookups in renderCell
     this.currentBuffer = buffer;
+    this.lastScrollbackProvider = scrollbackProvider;
+    this.lastScrollbarOpacity = scrollbarOpacity;
     buffer.prepareRenderState?.();
     const getCursor = () => buffer.getCursorFromRenderState?.() ?? buffer.getCursor();
     const getLine = (row: number) => buffer.getLineFromRenderState?.(row) ?? buffer.getLine(row);
@@ -274,6 +288,8 @@ export class CanvasRenderer {
       scrollbackProvider?.getScrollbackLine(offset) ??
       null;
     const viewportTop = Math.max(0, Math.floor(viewportY));
+    this.currentKittyPlacements =
+      buffer.getKittyGraphicsPlacementsFromRenderState?.(viewportTop) ?? [];
 
     // getCursor() calls update() internally to ensure fresh state.
     // Multiple update() calls are safe - dirty state persists until clearDirty().
@@ -525,6 +541,7 @@ export class CanvasRenderer {
     this.ctx.clearRect(0, lineY, lineWidth, this.metrics.height);
     this.ctx.fillStyle = this.theme.background;
     this.ctx.fillRect(0, lineY, lineWidth, this.metrics.height);
+    this.renderKittyPlacementsForLine(y, cols, GhosttyKittyPlacementLayer.BELOW_BG);
 
     // PASS 1: Draw all cell backgrounds first
     // This ensures all backgrounds are painted before any text, allowing text
@@ -535,6 +552,8 @@ export class CanvasRenderer {
       this.renderCellBackground(cell, x, y);
     }
 
+    this.renderKittyPlacementsForLine(y, cols, GhosttyKittyPlacementLayer.BELOW_TEXT);
+
     // PASS 2: Draw all cell text and decorations
     // Now text can safely extend beyond cell boundaries (for complex scripts)
     for (let x = 0; x < line.length; x++) {
@@ -542,6 +561,8 @@ export class CanvasRenderer {
       if (cell.width === 0) continue; // Skip spacer cells for wide characters
       this.renderCellText(cell, x, y);
     }
+
+    this.renderKittyPlacementsForLine(y, cols, GhosttyKittyPlacementLayer.ABOVE_TEXT);
   }
 
   /**
@@ -583,6 +604,264 @@ export class CanvasRenderer {
       this.ctx.fillStyle = this.rgbToCSS(bg_r, bg_g, bg_b);
       this.ctx.fillRect(cellX, cellY, cellWidth, this.metrics.height);
     }
+  }
+
+  private renderKittyPlacementsForLine(
+    y: number,
+    cols: number,
+    layer: GhosttyKittyPlacementLayer
+  ): void {
+    if (this.currentKittyPlacements.length === 0) {
+      return;
+    }
+
+    const lineY = y * this.metrics.height;
+    const lineHeight = this.metrics.height;
+
+    this.ctx.save();
+    this.ctx.beginPath();
+    this.ctx.rect(0, lineY, cols * this.metrics.width, lineHeight);
+    this.ctx.clip();
+
+    try {
+      for (const placement of this.currentKittyPlacements) {
+        if (placement.layer !== layer || placement.pixelWidth <= 0 || placement.pixelHeight <= 0) {
+          continue;
+        }
+
+        const top = placement.viewportY * this.metrics.height + placement.yOffset;
+        const bottom = top + placement.pixelHeight;
+        if (bottom <= lineY || top >= lineY + lineHeight) {
+          continue;
+        }
+
+        const surface = this.getKittyImageSurface(placement);
+        if (!surface) {
+          continue;
+        }
+
+        const hasIncompletePngGeometry =
+          placement.format === GhosttyKittyImageFormat.PNG &&
+          (placement.imageWidth === 0 ||
+            placement.imageHeight === 0 ||
+            placement.sourceWidth === 0 ||
+            placement.sourceHeight === 0);
+        const sourceWidth = placement.sourceWidth > 0 ? placement.sourceWidth : surface.width;
+        const sourceHeight = placement.sourceHeight > 0 ? placement.sourceHeight : surface.height;
+        const pixelWidth =
+          !hasIncompletePngGeometry && placement.pixelWidth > 0
+            ? placement.pixelWidth
+            : sourceWidth;
+        const pixelHeight =
+          !hasIncompletePngGeometry && placement.pixelHeight > 0
+            ? placement.pixelHeight
+            : sourceHeight;
+
+        this.ctx.drawImage(
+          surface,
+          placement.sourceX,
+          placement.sourceY,
+          sourceWidth,
+          sourceHeight,
+          placement.viewportX * this.metrics.width + placement.xOffset,
+          top,
+          pixelWidth,
+          pixelHeight
+        );
+      }
+    } finally {
+      this.ctx.restore();
+    }
+  }
+
+  private getKittyImageSurface(placement: GhosttyKittyImagePlacement): HTMLCanvasElement | null {
+    const cacheKey = [
+      placement.imageId,
+      placement.dataPtr,
+      placement.dataLen,
+      placement.imageWidth,
+      placement.imageHeight,
+      placement.format,
+    ].join(':');
+    const cached = this.kittyImageCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    if (this.kittyImageDecodeFailures.has(cacheKey)) {
+      return null;
+    }
+
+    if (placement.format === GhosttyKittyImageFormat.PNG) {
+      if (!this.kittyImageDecodePromises.has(cacheKey)) {
+        this.kittyImageDecodePromises.set(cacheKey, this.decodeKittyPng(cacheKey, placement));
+      }
+      return null;
+    }
+
+    const rgba = this.decodeKittyImageData(placement);
+    if (!rgba) {
+      return null;
+    }
+
+    const surface = document.createElement('canvas');
+    surface.width = placement.imageWidth;
+    surface.height = placement.imageHeight;
+    const ctx = surface.getContext('2d');
+    if (!ctx) {
+      return null;
+    }
+
+    const imageBytes = new Uint8ClampedArray(rgba.length);
+    imageBytes.set(rgba);
+    ctx.putImageData(new ImageData(imageBytes, placement.imageWidth, placement.imageHeight), 0, 0);
+    this.kittyImageCache.set(cacheKey, surface);
+    return surface;
+  }
+
+  private async decodeKittyPng(
+    cacheKey: string,
+    placement: GhosttyKittyImagePlacement
+  ): Promise<void> {
+    try {
+      const surface = await this.createSurfaceFromPngBytes(placement.data);
+      if (!surface) {
+        this.kittyImageDecodeFailures.add(cacheKey);
+        return;
+      }
+      this.kittyImageCache.set(cacheKey, surface);
+      this.requestKittyAsyncRerender();
+    } catch (error) {
+      console.warn('Failed to decode Kitty PNG image', error);
+      this.kittyImageDecodeFailures.add(cacheKey);
+    } finally {
+      this.kittyImageDecodePromises.delete(cacheKey);
+    }
+  }
+
+  private async createSurfaceFromPngBytes(
+    data: Uint8ClampedArray
+  ): Promise<HTMLCanvasElement | null> {
+    const pngBlob = new Blob([new Uint8Array(data)], { type: 'image/png' });
+    const bitmapDecoder = globalThis.createImageBitmap?.bind(globalThis);
+    if (bitmapDecoder) {
+      const bitmap = await bitmapDecoder(pngBlob);
+      try {
+        const surface = document.createElement('canvas');
+        surface.width = bitmap.width;
+        surface.height = bitmap.height;
+        const ctx = surface.getContext('2d');
+        if (!ctx) {
+          return null;
+        }
+        ctx.drawImage(bitmap, 0, 0);
+        return surface;
+      } finally {
+        bitmap.close?.();
+      }
+    }
+
+    if (typeof Image === 'undefined') {
+      return null;
+    }
+
+    const objectUrlFactory = URL.createObjectURL?.bind(URL);
+    const revokeObjectUrl = URL.revokeObjectURL?.bind(URL);
+    if (!objectUrlFactory || !revokeObjectUrl) {
+      return null;
+    }
+
+    const objectUrl = objectUrlFactory(pngBlob);
+    try {
+      const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('Image element failed to load PNG payload'));
+        img.src = objectUrl;
+      });
+
+      const surface = document.createElement('canvas');
+      surface.width = image.naturalWidth || image.width;
+      surface.height = image.naturalHeight || image.height;
+      const ctx = surface.getContext('2d');
+      if (!ctx) {
+        return null;
+      }
+      ctx.drawImage(image, 0, 0);
+      return surface;
+    } finally {
+      revokeObjectUrl(objectUrl);
+    }
+  }
+
+  private decodeKittyImageData(placement: GhosttyKittyImagePlacement): Uint8ClampedArray | null {
+    const pixelCount = placement.imageWidth * placement.imageHeight;
+    switch (placement.format) {
+      case GhosttyKittyImageFormat.RGBA:
+        return new Uint8ClampedArray(placement.data);
+      case GhosttyKittyImageFormat.RGB: {
+        const rgba = new Uint8ClampedArray(pixelCount * 4);
+        for (let src = 0, dest = 0; src < placement.data.length; src += 3, dest += 4) {
+          rgba[dest] = placement.data[src];
+          rgba[dest + 1] = placement.data[src + 1];
+          rgba[dest + 2] = placement.data[src + 2];
+          rgba[dest + 3] = 255;
+        }
+        return rgba;
+      }
+      case GhosttyKittyImageFormat.GRAY_ALPHA: {
+        const rgba = new Uint8ClampedArray(pixelCount * 4);
+        for (let src = 0, dest = 0; src < placement.data.length; src += 2, dest += 4) {
+          const gray = placement.data[src];
+          rgba[dest] = gray;
+          rgba[dest + 1] = gray;
+          rgba[dest + 2] = gray;
+          rgba[dest + 3] = placement.data[src + 1];
+        }
+        return rgba;
+      }
+      case GhosttyKittyImageFormat.GRAY: {
+        const rgba = new Uint8ClampedArray(pixelCount * 4);
+        for (let src = 0, dest = 0; src < placement.data.length; src += 1, dest += 4) {
+          const gray = placement.data[src];
+          rgba[dest] = gray;
+          rgba[dest + 1] = gray;
+          rgba[dest + 2] = gray;
+          rgba[dest + 3] = 255;
+        }
+        return rgba;
+      }
+      default:
+        return null;
+    }
+  }
+
+  private requestKittyAsyncRerender(): void {
+    if (this.kittyAsyncRerenderScheduled || !this.currentBuffer) {
+      return;
+    }
+
+    this.kittyAsyncRerenderScheduled = true;
+    const flush = () => {
+      this.kittyAsyncRerenderScheduled = false;
+      if (!this.currentBuffer) {
+        return;
+      }
+      this.render(
+        this.currentBuffer,
+        true,
+        this.lastViewportY,
+        this.lastScrollbackProvider,
+        this.lastScrollbarOpacity
+      );
+    };
+
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => flush());
+      return;
+    }
+
+    queueMicrotask(flush);
   }
 
   /**
@@ -757,6 +1036,10 @@ export class CanvasRenderer {
 
     // Skip rendering if invisible
     if (cell.flags & CellFlags.INVISIBLE) {
+      return;
+    }
+
+    if (cell.codepoint === CanvasRenderer.KITTY_UNICODE_PLACEHOLDER) {
       return;
     }
 
@@ -1160,5 +1443,8 @@ export class CanvasRenderer {
    */
   public dispose(): void {
     this.stopCursorBlink();
+    this.kittyImageCache.clear();
+    this.kittyImageDecodePromises.clear();
+    this.kittyImageDecodeFailures.clear();
   }
 }

@@ -358,6 +358,138 @@ export enum GhosttyResult {
   OUT_OF_MEMORY = -1,
   INVALID_VALUE = -2,
   OUT_OF_SPACE = -3,
+  NO_VALUE = -4,
+}
+
+export enum GhosttyOptimizeMode {
+  DEBUG = 0,
+  RELEASE_SAFE = 1,
+  RELEASE_SMALL = 2,
+  RELEASE_FAST = 3,
+}
+
+export enum GhosttyBuildInfoData {
+  INVALID = 0,
+  SIMD = 1,
+  KITTY_GRAPHICS = 2,
+  TMUX_CONTROL_MODE = 3,
+  OPTIMIZE = 4,
+  VERSION_STRING = 5,
+  VERSION_MAJOR = 6,
+  VERSION_MINOR = 7,
+  VERSION_PATCH = 8,
+  VERSION_BUILD = 9,
+}
+
+export interface GhosttyTypeFieldLayout {
+  offset: number;
+  size: number;
+  type: string;
+}
+
+export interface GhosttyTypeLayout {
+  size: number;
+  align: number;
+  fields: Record<string, GhosttyTypeFieldLayout>;
+}
+
+export type GhosttyTypeLayouts = Record<string, GhosttyTypeLayout>;
+
+export interface GhosttyBuildInfoSnapshot {
+  simd: boolean;
+  kittyGraphics: boolean;
+  tmuxControlMode: boolean;
+  optimize: GhosttyOptimizeMode;
+  versionString: string;
+  versionMajor: number;
+  versionMinor: number;
+  versionPatch: number;
+  versionBuild: string;
+}
+
+export interface GhosttyDiagnostics {
+  buildInfo: GhosttyBuildInfoSnapshot;
+  typeJson: string;
+  typeLayouts: GhosttyTypeLayouts;
+}
+
+export enum GhosttyTerminalData {
+  KITTY_GRAPHICS = 30,
+}
+
+export enum GhosttyTerminalOption {
+  KITTY_IMAGE_STORAGE_LIMIT = 15,
+}
+
+export enum GhosttyKittyPlacementLayer {
+  ALL = 0,
+  BELOW_BG = 1,
+  BELOW_TEXT = 2,
+  ABOVE_TEXT = 3,
+}
+
+export enum GhosttyKittyImageFormat {
+  RGB = 0,
+  RGBA = 1,
+  PNG = 2,
+  GRAY_ALPHA = 3,
+  GRAY = 4,
+}
+
+export enum GhosttyKittyImageCompression {
+  NONE = 0,
+  ZLIB_DEFLATE = 1,
+}
+
+export interface GhosttyKittyImagePlacement {
+  imageId: number;
+  placementId: number;
+  z: number;
+  layer: GhosttyKittyPlacementLayer;
+  viewportX: number;
+  viewportY: number;
+  xOffset: number;
+  yOffset: number;
+  pixelWidth: number;
+  pixelHeight: number;
+  sourceX: number;
+  sourceY: number;
+  sourceWidth: number;
+  sourceHeight: number;
+  imageWidth: number;
+  imageHeight: number;
+  format: GhosttyKittyImageFormat;
+  compression: GhosttyKittyImageCompression;
+  dataPtr: number;
+  dataLen: number;
+  data: Uint8ClampedArray;
+}
+
+export enum GhosttyPointTag {
+  ACTIVE = 0,
+  VIEWPORT = 1,
+  SCREEN = 2,
+  HISTORY = 3,
+}
+
+export enum GhosttyFormatterFormat {
+  PLAIN = 0,
+  VT = 1,
+  HTML = 2,
+}
+
+export interface GhosttyAbsoluteSelectionRange {
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+  rectangle?: boolean;
+}
+
+export interface GhosttyFormatterOptions {
+  format: GhosttyFormatterFormat;
+  selection?: GhosttyAbsoluteSelectionRange;
+  unwrap?: boolean;
+  trim?: boolean;
+  includeTerminalState?: boolean;
 }
 
 export enum MouseAction {
@@ -429,6 +561,19 @@ export interface GhosttyWasmExports extends WebAssembly.Exports {
   ghostty_wasm_free_u8(ptr: number): void;
   ghostty_wasm_alloc_usize(): number;
   ghostty_wasm_free_usize(ptr: number): void;
+  ghostty_build_info(data: number, outPtr: number): number;
+  ghostty_type_json(): number;
+  ghostty_terminal_set_kitty_image_storage_limit(
+    terminal: TerminalHandle,
+    valuePtr: number
+  ): number;
+  ghostty_terminal_format_buf(
+    terminal: TerminalHandle,
+    optionsPtr: number,
+    outPtr: number,
+    outLen: number,
+    writtenPtr: number
+  ): number;
 
   // SGR parser
   ghostty_sgr_new(allocator: number, parserPtrPtr: number): number;
@@ -451,6 +596,7 @@ export interface GhosttyWasmExports extends WebAssembly.Exports {
   ghostty_key_encoder_free(encoder: number): void;
   ghostty_key_encoder_setopt(encoder: number, option: number, valuePtr: number): number;
   ghostty_key_encoder_setopt_from_terminal(encoder: number, terminal: TerminalHandle): void;
+  ghostty_key_encoder_setopt_from_terminal_simple(encoder: number, terminal: TerminalHandle): void;
   ghostty_key_encoder_encode(
     encoder: number,
     eventPtr: number,
@@ -472,6 +618,10 @@ export interface GhosttyWasmExports extends WebAssembly.Exports {
   ghostty_mouse_encoder_free(encoder: number): void;
   ghostty_mouse_encoder_setopt(encoder: number, option: number, valuePtr: number): void;
   ghostty_mouse_encoder_setopt_from_terminal(encoder: number, terminal: TerminalHandle): void;
+  ghostty_mouse_encoder_setopt_from_terminal_simple(
+    encoder: number,
+    terminal: TerminalHandle
+  ): void;
   ghostty_mouse_encoder_reset(encoder: number): void;
   ghostty_mouse_encoder_encode(
     encoder: number,
@@ -490,11 +640,28 @@ export interface GhosttyWasmExports extends WebAssembly.Exports {
   ghostty_mouse_event_set_mods(event: number, mods: number): void;
   ghostty_mouse_event_set_position_xy(event: number, x: number, y: number): void;
 
+  // Paste helpers
+  ghostty_paste_encode(
+    dataPtr: number,
+    dataLen: number,
+    bracketed: boolean,
+    outPtr: number,
+    outLen: number,
+    writtenPtr: number
+  ): number;
+
   // Terminal lifecycle
   ghostty_terminal_new_simple(cols: number, rows: number): TerminalHandle;
   ghostty_terminal_new_with_config(cols: number, rows: number, configPtr: number): TerminalHandle;
   ghostty_terminal_free_simple(terminal: TerminalHandle): void;
   ghostty_terminal_resize_simple(terminal: TerminalHandle, cols: number, rows: number): void;
+  ghostty_terminal_resize_with_cell_size_simple(
+    terminal: TerminalHandle,
+    cols: number,
+    rows: number,
+    cellWidthPx: number,
+    cellHeightPx: number
+  ): void;
   ghostty_terminal_write(terminal: TerminalHandle, dataPtr: number, dataLen: number): void;
 
   // RenderState API - high-performance rendering (ONE call gets ALL data)
@@ -526,6 +693,18 @@ export interface GhosttyWasmExports extends WebAssembly.Exports {
   ghostty_terminal_is_alternate_screen(terminal: TerminalHandle): boolean;
   ghostty_terminal_has_mouse_tracking(terminal: TerminalHandle): number;
   ghostty_terminal_get_mode(terminal: TerminalHandle, mode: number, isAnsi: boolean): number;
+  ghostty_terminal_grid_ref_ptr(terminal: TerminalHandle, pointPtr: number, refPtr: number): number;
+  ghostty_terminal_get_kitty_graphics_placements(
+    terminal: TerminalHandle,
+    bufPtr: number,
+    bufLen: number
+  ): number;
+  ghostty_terminal_get_kitty_graphics_placements_in_viewport(
+    terminal: TerminalHandle,
+    viewportTop: number,
+    bufPtr: number,
+    bufLen: number
+  ): number;
 
   // Scrollback API
   ghostty_terminal_get_scrollback_length(terminal: TerminalHandle): number;
@@ -563,6 +742,13 @@ export interface GhosttyWasmExports extends WebAssembly.Exports {
   // Response API (for DSR and other terminal queries)
   ghostty_terminal_has_response(terminal: TerminalHandle): boolean;
   ghostty_terminal_read_response(terminal: TerminalHandle, bufPtr: number, bufLen: number): number; // Returns bytes written, 0 if no response, -1 on error
+  ghostty_terminal_read_bell_count(terminal: TerminalHandle): number;
+  ghostty_terminal_has_title_change(terminal: TerminalHandle): boolean;
+  ghostty_terminal_read_title_change(
+    terminal: TerminalHandle,
+    bufPtr: number,
+    bufLen: number
+  ): number; // Returns bytes written, 0 for empty title, -1 on error
 }
 
 // ============================================================================
@@ -621,6 +807,7 @@ export interface GhosttyTerminalConfig {
   bgColor?: number;
   cursorColor?: number;
   palette?: number[];
+  kittyImageStorageLimit?: number;
 }
 
 /**

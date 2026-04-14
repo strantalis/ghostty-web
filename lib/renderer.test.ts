@@ -13,7 +13,13 @@ import {
   type IRenderable,
   type IScrollbackProvider,
 } from './renderer';
-import type { GhosttyCell } from './types';
+import {
+  type GhosttyCell,
+  GhosttyKittyImageCompression,
+  GhosttyKittyImageFormat,
+  type GhosttyKittyImagePlacement,
+  GhosttyKittyPlacementLayer,
+} from './types';
 
 function makeCell(char: string): GhosttyCell {
   return {
@@ -33,6 +39,35 @@ function makeCell(char: string): GhosttyCell {
 
 function makeLine(label: string, cols: number): GhosttyCell[] {
   return Array.from({ length: cols }, (_, index) => makeCell(label[index] ?? ' '));
+}
+
+function makeKittyPlacement(
+  overrides: Partial<GhosttyKittyImagePlacement> = {}
+): GhosttyKittyImagePlacement {
+  return {
+    imageId: 1,
+    placementId: 1,
+    z: 0,
+    layer: GhosttyKittyPlacementLayer.BELOW_TEXT,
+    viewportX: 0,
+    viewportY: 0,
+    xOffset: 0,
+    yOffset: 0,
+    pixelWidth: 16,
+    pixelHeight: 16,
+    sourceX: 0,
+    sourceY: 0,
+    sourceWidth: 16,
+    sourceHeight: 16,
+    imageWidth: 16,
+    imageHeight: 16,
+    format: GhosttyKittyImageFormat.RGB,
+    compression: GhosttyKittyImageCompression.NONE,
+    dataPtr: 123,
+    dataLen: 16 * 16 * 3,
+    data: new Uint8ClampedArray(16 * 16 * 3),
+    ...overrides,
+  };
 }
 
 describe('CanvasRenderer', () => {
@@ -129,6 +164,112 @@ describe('CanvasRenderer', () => {
       expect(screenRows).toEqual([0, 1, 2]);
 
       renderer.dispose();
+    });
+  });
+
+  describe('Kitty PNG decode', () => {
+    test('decodes PNG placements asynchronously into the surface cache', async () => {
+      const canvas = document.createElement('canvas');
+      const renderer = new CanvasRenderer(canvas, { devicePixelRatio: 1 });
+      const decodedSurface = document.createElement('canvas');
+      decodedSurface.width = 12;
+      decodedSurface.height = 14;
+
+      const originalCreateImageBitmap = globalThis.createImageBitmap;
+      let decodeCalls = 0;
+      globalThis.createImageBitmap = (async () => {
+        decodeCalls += 1;
+        return decodedSurface as unknown as ImageBitmap;
+      }) as typeof globalThis.createImageBitmap;
+
+      try {
+        const placement = makeKittyPlacement({
+          format: GhosttyKittyImageFormat.PNG,
+          dataLen: 67,
+          data: new Uint8ClampedArray([137, 80, 78, 71]),
+        });
+
+        expect((renderer as any).getKittyImageSurface(placement)).toBeNull();
+        expect(decodeCalls).toBe(1);
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const surface = (renderer as any).getKittyImageSurface(
+          placement
+        ) as HTMLCanvasElement | null;
+        expect(surface).not.toBeNull();
+        expect(surface?.width).toBe(12);
+        expect(surface?.height).toBe(14);
+        expect(decodeCalls).toBe(1);
+      } finally {
+        globalThis.createImageBitmap = originalCreateImageBitmap;
+        renderer.dispose();
+      }
+    });
+
+    test('forces a rerender when an async PNG decode completes', async () => {
+      const canvas = document.createElement('canvas');
+      const renderer = new CanvasRenderer(canvas, { devicePixelRatio: 1 });
+      const decodedSurface = document.createElement('canvas');
+      decodedSurface.width = 12;
+      decodedSurface.height = 14;
+
+      const originalCreateImageBitmap = globalThis.createImageBitmap;
+      const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
+      const originalRender = renderer.render.bind(renderer);
+      let renderCalls = 0;
+
+      globalThis.createImageBitmap = (async () =>
+        decodedSurface as unknown as ImageBitmap) as typeof globalThis.createImageBitmap;
+      globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+        cb(0);
+        return 1;
+      }) as typeof globalThis.requestAnimationFrame;
+
+      try {
+        renderer.render = ((...args: Parameters<typeof renderer.render>) => {
+          renderCalls += 1;
+          return originalRender(...args);
+        }) as typeof renderer.render;
+
+        const placement = makeKittyPlacement({
+          format: GhosttyKittyImageFormat.PNG,
+          dataLen: 67,
+          data: new Uint8ClampedArray([137, 80, 78, 71]),
+        });
+
+        const buffer: IRenderable = {
+          getLine(y: number): GhosttyCell[] | null {
+            return makeLine(`row${y}`, 4);
+          },
+          getCursor() {
+            return { x: 0, y: 0, visible: false };
+          },
+          getDimensions() {
+            return { cols: 4, rows: 4 };
+          },
+          isRowDirty(): boolean {
+            return false;
+          },
+          clearDirty(): void {},
+          getKittyGraphicsPlacementsFromRenderState() {
+            return [placement];
+          },
+        };
+
+        renderer.render(buffer, true, 0, undefined, 1);
+        expect(renderCalls).toBe(1);
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(renderCalls).toBeGreaterThan(1);
+      } finally {
+        globalThis.createImageBitmap = originalCreateImageBitmap;
+        globalThis.requestAnimationFrame = originalRequestAnimationFrame;
+        renderer.dispose();
+      }
     });
   });
 });

@@ -4,9 +4,15 @@
  * Provides utilities for test isolation and setup.
  */
 
+import { fileURLToPath } from 'node:url';
 import { Ghostty } from './ghostty';
 import type { ITerminalOptions } from './interfaces';
 import { Terminal } from './terminal';
+
+export function getTestWasmPath(): string {
+  const wasmUrl = new URL('../ghostty-vt.wasm', import.meta.url);
+  return wasmUrl.protocol === 'file:' ? fileURLToPath(wasmUrl) : wasmUrl.href;
+}
 
 /**
  * Creates a Terminal instance with an isolated Ghostty WASM instance.
@@ -32,6 +38,6 @@ import { Terminal } from './terminal';
 export async function createIsolatedTerminal(
   options: Omit<ITerminalOptions, 'ghostty'> = {}
 ): Promise<Terminal> {
-  const ghostty = await Ghostty.load();
+  const ghostty = await Ghostty.load(getTestWasmPath());
   return new Terminal({ ...options, ghostty });
 }

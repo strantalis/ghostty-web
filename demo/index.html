@@ -244,6 +244,14 @@
           }
         });
 
+        window.__ghosttyDemo = {
+          term,
+          fitAddon,
+          get websocket() {
+            return ws;
+          },
+        };
+
         // Debug scrollback
         console.log('Terminal scrollback:', term.buffer?.scrollback?.length || 'N/A');
         term.onScroll((ydisp) => {

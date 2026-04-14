@@ -5,6 +5,7 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { Ghostty } from './ghostty';
 import { InputHandler } from './input-handler';
+import { getTestWasmPath } from './test-helpers';
 
 // Mock DOM types for testing
 interface MockKeyboardEvent {
@@ -197,7 +198,7 @@ describe('InputHandler', () => {
 
   beforeEach(async () => {
     // Create a fresh Ghostty WASM instance for complete test isolation
-    ghostty = await Ghostty.load();
+    ghostty = await Ghostty.load(getTestWasmPath());
 
     // Create mock container for each test
     container = createMockContainer();

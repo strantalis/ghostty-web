@@ -63,6 +63,10 @@ export {
   CellFlags,
   DirtyState,
   Ghostty,
+  GhosttyFormatterFormat,
+  GhosttyKittyImageCompression,
+  GhosttyKittyImageFormat,
+  GhosttyKittyPlacementLayer,
   GhosttyTerminal,
   KeyEncoder,
   KeyEncoderOption,
@@ -93,7 +97,12 @@ export { SelectionManager } from './selection-manager';
 export { Terminal } from './terminal';
 export type {
   Cursor,
+  GhosttyBuildInfoSnapshot,
   GhosttyCell,
+  GhosttyDiagnostics,
+  GhosttyFormatterOptions,
+  GhosttyKittyImagePlacement,
+  GhosttyTypeLayouts,
   IBufferCellPosition,
   ILink,
   ILinkProvider,
@@ -101,4 +110,4 @@ export type {
   RGB,
   TerminalHandle,
 } from './types';
-export { Key, KeyAction, Mods } from './types';
+export { GhosttyBuildInfoData, GhosttyOptimizeMode, Key, KeyAction, Mods } from './types';

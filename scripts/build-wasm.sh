@@ -53,7 +53,7 @@ git -C "$GHOSTTY_DIR" apply "$PATCH_FILE"
 echo "⚙️  Building WASM (takes ~20 seconds)..."
 (
     cd "$GHOSTTY_DIR"
-    zig build lib-vt -Dtarget=wasm32-freestanding -Doptimize=ReleaseSmall
+    zig build -Demit-lib-vt=true -Dtarget=wasm32-freestanding -Doptimize=ReleaseSmall
 )
 
 # Copy to project root
